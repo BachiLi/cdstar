@@ -1,5 +1,5 @@
-#ifndef ADCPP_DERIVATIVE_GRAPH_H__
-#define ADCPP_DERIVATIVE_GRAPH_H__
+#ifndef CDSTAR_DERIVATIVE_GRAPH_H__
+#define CDSTAR_DERIVATIVE_GRAPH_H__
 
 #include "expression.h"
 
@@ -11,7 +11,7 @@
 #include <boost/graph/subgraph.hpp>
 #include <boost/graph/adjacency_list.hpp>
 
-namespace adcpp {
+namespace cdstar {
 
 struct edge_property_expression_t {
     typedef boost::edge_property_tag kind;
@@ -63,6 +63,6 @@ private:
     std::vector<std::shared_ptr<Expression>> m_Derivatives;
 };
 
-}
+} // namespace cdstar
 
-#endif //ADCPP_DERIVATIVE_GRAPH_H__
+#endif //CDSTAR_DERIVATIVE_GRAPH_H__

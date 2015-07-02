@@ -1,10 +1,10 @@
-#include "adcpp/expression.h"
-#include "adcpp/library.h"
+#include "cdstar/expression.h"
+#include "cdstar/library.h"
 
 #include <iostream>
 #include <cmath>
 
-using namespace adcpp;
+using namespace cdstar;
 
 void TestConstant() {
     ClearExpressionCache();

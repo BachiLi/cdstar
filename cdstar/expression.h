@@ -1,5 +1,5 @@
-#ifndef ADCPP_EXPRESSION_H__
-#define ADCPP_EXPRESSION_H__
+#ifndef CDSTAR_EXPRESSION_H__
+#define CDSTAR_EXPRESSION_H__
 
 #include <memory>
 #include <iostream>
@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace adcpp {
+namespace cdstar {
 
 class Expression;
 
@@ -411,6 +411,6 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &input,
                   const std::string &name,
                   std::ostream &os);
 
-}
+} //namespace cdstar
 
-#endif //ADCPP_EXPRESSION_H__
+#endif //CDSTAR_EXPRESSION_H__

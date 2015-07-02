@@ -1,7 +1,7 @@
 #include "library.h"
 #include "expression.h"
 
-namespace adcpp {
+namespace cdstar {
 
 // http://stackoverflow.com/questions/2538103/how-to-call-a-function-from-a-shared-library
 lib_t LoadLib(const char* lib) {
@@ -72,7 +72,7 @@ void* Library::LoadFunction(const std::string &name) {
     if (!m_Loaded) {
         throw std::runtime_error("Library Not Loaded");
     }
-    return adcpp::LoadFunction(m_LibHandle, name.c_str());
+    return cdstar::LoadFunction(m_LibHandle, name.c_str());
 }
 
-}
+} // namespace cdstar

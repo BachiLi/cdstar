@@ -6,7 +6,7 @@
 #include <functional>
 #include <set>
 
-namespace adcpp {
+namespace cdstar {
 
 void PrintGraph(const DervGraph& graph) {
     auto indexMap = boost::get(boost::vertex_index, graph);
@@ -520,4 +520,4 @@ void DerivativeGraph::FactorCommonSubproduct(const std::vector<DerivativeSubgrap
     }
 }
 
-}
+} //namespace cdstar

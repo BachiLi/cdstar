@@ -4,7 +4,7 @@
 #include <iostream>
 #include <unordered_set>
 
-namespace adcpp {
+namespace cdstar {
 
 struct ExprHasher {
     std::size_t operator()(const std::shared_ptr<Expression> &expr) const {
@@ -522,4 +522,4 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
     os << "}" << std::endl;
 }
 
-}
+} //namespace cdstar

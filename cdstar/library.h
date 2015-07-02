@@ -1,5 +1,5 @@
-#ifndef ADCPP_LIBRARY_H__
-#define ADCPP_LIBRARY_H__
+#ifndef CDSTAR_LIBRARY_H__
+#define CDSTAR_LIBRARY_H__
 
 #include <memory>
 #include <fstream>
@@ -13,7 +13,7 @@
     typedef void* lib_t;
 #endif
 
-namespace adcpp {
+namespace cdstar {
 
 class Variable;
 class NamedAssignment;
@@ -39,4 +39,4 @@ private:
 
 }
 
-#endif //ADCPP_LIBRARY_H__
+#endif //CDSTAR_LIBRARY_H__
