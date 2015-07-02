@@ -13,16 +13,15 @@ CD\* is an expression compiler written in C++ that generates C code of functions
 Generates the following output in standard output
 ```
 void derv(const double x[1], double dydx[1]) {
-        double t[8];
+        double t[7];
         t[0] = x[0] * x[0];
         t[1] = 2.000000 * t[0];
         t[2] = 2.000000 * x[0];
         t[3] = t[2] + 3.000000;
-        t[4] = 2.000000 * x[0];
-        t[5] = t[3] * t[4];
-        t[6] = t[1] + t[5];
-        t[7] = t[6] + 4.000000;
-        dydx[0] = t[7];
+        t[4] = t[3] * t[2];
+        t[5] = t[1] + t[4];
+        t[6] = t[5] + 4.000000;
+        dydx[0] = t[6];
 }
 ```
 It is possible to generate higher-order derivatives or mixed derivatives by mixing the calls of the Derivatives function.  See test.cpp for more examples.

@@ -455,15 +455,15 @@ std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &e
 }
 
 std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr0, 
-                                            const std::shared_ptr<Expression> &expr1) {
+                                            const std::shared_ptr<Expression> &expr1) {    
     auto it = g_ExprCache.find(expr0);
     if (it == g_ExprCache.end()) {
         it = g_ExprCache.find(expr1);
         if (it == g_ExprCache.end()) {
-            g_ExprCache.insert(expr0);        
+            g_ExprCache.insert(expr0);     
             return expr0;
         }        
-    }
+    }    
     return *it;                                                
 }
 

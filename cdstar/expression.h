@@ -149,7 +149,7 @@ public:
     bool Equal(const std::shared_ptr<Expression> expr) const {
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<NamedAssignment> _expr = std::dynamic_pointer_cast<NamedAssignment>(expr);        
-        return m_Name == _expr->m_Name && m_Expr == _expr->m_Expr;
+        return m_Name == _expr->m_Name && m_Expr->Equal(_expr->m_Expr);
     }    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(m_Index);
@@ -173,7 +173,7 @@ public:
     virtual bool Equal(const std::shared_ptr<Expression> expr) const {
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<UnaryAssignment> _expr = std::dynamic_pointer_cast<UnaryAssignment>(expr);        
-        return m_Expr == _expr->m_Expr;
+        return m_Expr->Equal(_expr->m_Expr);
     }         
 protected:
     std::shared_ptr<Expression> m_Expr;
@@ -300,7 +300,7 @@ public:
     bool Equal(const std::shared_ptr<Expression> expr) const {
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Add> _expr = std::dynamic_pointer_cast<Add>(expr);                
-        return m_Expr0 == _expr->m_Expr0 && m_Expr1 == _expr->m_Expr1;              
+        return m_Expr0->Equal(_expr->m_Expr0) && m_Expr1->Equal(_expr->m_Expr1);
     }    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_ADD);
@@ -324,7 +324,7 @@ public:
     bool Equal(const std::shared_ptr<Expression> expr) const {
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Multiply> _expr = std::dynamic_pointer_cast<Multiply>(expr);        
-        return m_Expr0 == _expr->m_Expr0 && m_Expr1 == _expr->m_Expr1;              
+        return m_Expr0->Equal(_expr->m_Expr0) && m_Expr1->Equal(_expr->m_Expr1);
     }        
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_MULTIPLY);
