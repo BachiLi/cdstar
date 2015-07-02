@@ -309,6 +309,19 @@ std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
             return (expr0->GetConstant() + children[1]->GetConstant()) + children[0];
         }
     }
+    if (expr0->Type() == ET_MULTIPLY && expr1->Type() == ET_MULTIPLY) {
+        auto children0 = expr0->Children();
+        auto children1 = expr1->Children();
+        if (children0[0] == children1[0]) {
+            return children0[0] * (children0[1] + children1[1]);
+        } else if (children0[0] == children1[1]) {
+            return children0[0] * (children0[1] + children1[0]);
+        } else if (children0[1] == children1[0]) {
+            return children0[1] * (children0[0] + children1[1]);
+        } else if (children0[1] == children1[1]) {
+            return children0[1] * (children0[0] + children1[0]);
+        }
+    }
     auto ret0 = std::make_shared<Add>(expr0, expr1);
     auto ret1 = std::make_shared<Add>(expr1, expr0);
     return CacheExpression(ret0, ret1);
