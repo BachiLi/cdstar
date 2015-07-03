@@ -318,6 +318,9 @@ DervGraphVertex DerivativeGraph::BuildGraph(const std::shared_ptr<Expression> no
     for(size_t i = 0; i < children.size(); i++) {
         auto child = children[i];
         auto derv = dervs[i];
+        if (derv->Type() == ET_CONSTANT && derv->GetConstant() == 0.0) {
+            continue;
+        }
         DervGraphVertex childVertex = BuildGraph(child);
         vertexRec[childVertex] = vertexRec[childVertex] + 1;
         if (vertexRec[childVertex] == 1) {

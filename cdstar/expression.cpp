@@ -13,7 +13,7 @@ struct ExprHasher {
 };
 
 struct ExprComparator {
-    bool operator()(const std::shared_ptr<Expression> &expr0, 
+    bool operator()(const std::shared_ptr<Expression> &expr0,
                     const std::shared_ptr<Expression> &expr1) const {
         return expr0->Equal(expr1);
     }
@@ -23,7 +23,12 @@ std::unordered_set<std::shared_ptr<Expression>, ExprHasher, ExprComparator> g_Ex
 
 void AssignmentMap::Register(const Expression *expr) {
     if (m_ExprMap.find(expr) == m_ExprMap.end()) {
-        m_ExprMap[expr] = m_AssignCount++;            
+        m_ExprMap[expr] = m_AssignCount++;
+        m_MaxParentId[expr] = -1;
+    }
+    int id = m_ExprMap[expr];
+    for (auto child : expr->Children()) {
+        m_MaxParentId[child.get()] = std::max(m_MaxParentId[child.get()], id);
     }
 }
 
@@ -41,14 +46,52 @@ int AssignmentMap::GetIndex(const Expression *expr) const {
     return -1;
 }
 
+void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, bool inSubtree) {
+    bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
+    if ((inSubtree && !out) || (!inSubtree && out)) {
+        m_ExprMasks.top().insert(expr);
+    }
+    if (out) {
+        rootId = -1;
+    }
+    for (auto child : expr->Children()) {
+        MaskSubtree(child.get(), rootId, inSubtree);
+    }
+}
+
+void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
+    if (assignMap.IsEmitted(this)) {
+        return;
+    }
+    auto children = Children();
+    if (children.size() == 0) {
+        return;
+    }
+    for (auto child : children) {
+        child->Emit(assignMap, os);
+    }
+    if (!assignMap.IsMasked(this)) {
+        EmitSelf(assignMap, os);
+        assignMap.SetEmitted(this);
+    }
+}
+
+void Expression::Register(AssignmentMap &assignMap) const {
+    auto children = Children();
+    if (children.size() == 0) {
+        return;
+    }
+    for (auto child : children) {
+        child->Register(assignMap);
+    }
+    assignMap.Register(this);
+}
+
 void Variable::Print() const {
     std::cerr << m_Name << "[" << m_Index << "]";
 }
 
-void Variable::Register(AssignmentMap &assignMap) const {
-}
-
-void Variable::Emit(AssignmentMap &assignMap, std::ostream &os) const {
+void Variable::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string Variable::GetEmitName(const AssignmentMap &assignMap) const {
@@ -67,10 +110,7 @@ void Constant::Print() const {
     std::cerr << m_Value;
 }
 
-void Constant::Register(AssignmentMap &assignMap) const {    
-}
-
-void Constant::Emit(AssignmentMap &assignMap, std::ostream &os) const {
+void Constant::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string Constant::GetEmitName(const AssignmentMap &assignMap) const {
@@ -90,17 +130,8 @@ void NamedAssignment::Print() const {
     m_Expr->Print();
 }
 
-void NamedAssignment::Register(AssignmentMap &assignMap) const {
-    m_Expr->Register(assignMap);    
-}
-
-void NamedAssignment::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
+void NamedAssignment::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 std::string NamedAssignment::GetEmitName(const AssignmentMap &assignMap) const {
@@ -113,11 +144,6 @@ std::vector<std::shared_ptr<Expression>> NamedAssignment::Children() const {
 
 std::vector<std::shared_ptr<Expression>> NamedAssignment::Dervs() const {
     return {std::make_shared<Constant>(1.0)};
-}
-
-void UnaryAssignment::Register(AssignmentMap &assignMap) const {
-    m_Expr->Register(assignMap);
-    assignMap.Register(this);
 }
 
 std::string UnaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
@@ -134,13 +160,8 @@ void Negate::Print() const {
     std::cerr << ")";
 }
 
-void Negate::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = -" << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
+void Negate::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = -" << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 std::vector<std::shared_ptr<Expression>> Negate::Dervs() const {
@@ -153,13 +174,8 @@ void Inverse::Print() const {
     std::cerr << ")";
 }
 
-void Inverse::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = 1.0 / " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
+void Inverse::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = 1.0 / " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 std::vector<std::shared_ptr<Expression>> Inverse::Dervs() const {
@@ -174,13 +190,8 @@ void Sin::Print() const {
     std::cerr << ")";
 }
 
-void Sin::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = sin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-    assignMap.SetEmitted(this);
+void Sin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
 std::vector<std::shared_ptr<Expression>> Sin::Dervs() const {    
@@ -193,13 +204,8 @@ void Cos::Print() const {
     std::cerr << ")";
 }
 
-void Cos::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = cos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-    assignMap.SetEmitted(this);
+void Cos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = cos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
 std::vector<std::shared_ptr<Expression>> Cos::Dervs() const {    
@@ -212,31 +218,20 @@ void Tan::Print() const {
     std::cerr << ")";
 }
 
-void Tan::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr->Emit(assignMap, os);
-    os << "\t" << GetEmitName(assignMap) << " = tan(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-    assignMap.SetEmitted(this);
+void Tan::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = tan(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Tan::Dervs() const {    
+std::vector<std::shared_ptr<Expression>> Tan::Dervs() const {
     auto c = cos(m_Expr);
     return {Inv(c * c)};
-}
-
-void BinaryAssignment::Register(AssignmentMap &assignMap) const {
-    m_Expr0->Register(assignMap);
-    m_Expr1->Register(assignMap);
-    assignMap.Register(this);
 }
 
 std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }
 
-std::vector<std::shared_ptr<Expression>> BinaryAssignment::Children() const {    
+std::vector<std::shared_ptr<Expression>> BinaryAssignment::Children() const {
     std::vector<std::shared_ptr<Expression>> ret;
     ret.push_back(m_Expr0);
     ret.push_back(m_Expr1);
@@ -251,15 +246,10 @@ void Add::Print() const {
     std::cerr << ")";
 }
 
-void Add::Emit(AssignmentMap &assignMap, std::ostream &os) const {    
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }    
-    m_Expr0->Emit(assignMap, os);
-    m_Expr1->Emit(assignMap, os);       
-    os << "\t" << GetEmitName(assignMap) << " = " << m_Expr0->GetEmitName(assignMap) << " + " << 
-                                                     m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
+void Add::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << 
+        m_Expr0->GetEmitName(assignMap) << " + " <<
+        m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 std::vector<std::shared_ptr<Expression>> Add::Dervs() const {    
@@ -273,18 +263,13 @@ void Multiply::Print() const {
     m_Expr1->Print();
 }
 
-void Multiply::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }    
-    m_Expr0->Emit(assignMap, os);
-    m_Expr1->Emit(assignMap, os);       
-    os << "\t" << GetEmitName(assignMap) << " = " << m_Expr0->GetEmitName(assignMap) << " * " << 
-                                                     m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
+void Multiply::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << 
+        m_Expr0->GetEmitName(assignMap) << " * " << 
+        m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Multiply::Dervs() const {    
+std::vector<std::shared_ptr<Expression>> Multiply::Dervs() const {
     return {m_Expr1, m_Expr0};
 }    
 
@@ -344,38 +329,27 @@ void Boolean::Print() const {
     std::cerr << ")";
 }
 
-void Boolean::Register(AssignmentMap &assignMap) const {
-    m_Expr0->Register(assignMap);
-    m_Expr1->Register(assignMap);
-    assignMap.RegisterBoolean(this);    
-}
-
-void Boolean::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
-        return;
-    }
-    m_Expr0->Emit(assignMap, os);
-    m_Expr1->Emit(assignMap, os);
-    os << "\tint " << GetEmitName(assignMap) << " = " << 
+void Boolean::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << "int " << GetEmitName(assignMap) << " = " <<
         m_Expr0->GetEmitName(assignMap) << OpToString() << m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
-    assignMap.SetEmitted(this);
 }
 
 std::string Boolean::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("b") + std::to_string(assignMap.GetIndex(this));
 }
-    
+
 std::vector<std::shared_ptr<Expression>> Boolean::Children() const {
-    return {};
+    return {m_Expr0, m_Expr1};
 }
 
 std::vector<std::shared_ptr<Expression>> Boolean::Dervs() const {
-    return {};
+    auto zero = std::make_shared<Constant>(0.0);
+    return {zero, zero};
 }
 
 void CondExpr::Print() const {
-    std::cerr << "(";    
-    m_Cond->Print();    
+    std::cerr << "(";
+    m_Cond->Print();
     std::cerr << " ? ";
     m_TrueExpr->Print();
     std::cerr << " : ";
@@ -383,26 +357,44 @@ void CondExpr::Print() const {
     std::cerr << ")";
 }
 
-void CondExpr::Register(AssignmentMap &assignMap) const {
-    m_Cond->Register(assignMap);
-    m_TrueExpr->Register(assignMap);
-    m_FalseExpr->Register(assignMap);
-    assignMap.Register(this);    
-}
-
 void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     if (assignMap.IsEmitted(this)) {
         return;
     }
     m_Cond->Emit(assignMap, os);
+    if (assignMap.IsMasked(this)) {
+        m_TrueExpr->Emit(assignMap, os);
+        m_FalseExpr->Emit(assignMap, os);
+        return;
+    }
+    assignMap.PushMask();
+    int id = assignMap.GetIndex(this);
+    assignMap.MaskSubtree(m_TrueExpr.get(), id, true);
+    assignMap.MaskSubtree(m_FalseExpr.get(), id, true);
     m_TrueExpr->Emit(assignMap, os);
     m_FalseExpr->Emit(assignMap, os);
-    os << "\tif (" << m_Cond->GetEmitName(assignMap) << ") {" << std::endl;    
-    os << "\t\t" << GetEmitName(assignMap) << " = " << m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
-    os << "\t} else {" << std::endl;    
-    os << "\t\t" << GetEmitName(assignMap) << " = " << m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
-    os << "\t}" << std::endl;
+    assignMap.PopMask();
+    assignMap.PrintTab(os) << "if (" << m_Cond->GetEmitName(assignMap) << ") {" << std::endl;
+    assignMap.IncTab();
+    assignMap.PushMask();
+    assignMap.MaskSubtree(m_TrueExpr.get(), id, false);
+    m_TrueExpr->Emit(assignMap, os);
+    assignMap.PopMask();    
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
+    assignMap.DecTab();
+    assignMap.PrintTab(os) << "} else {" << std::endl;
+    assignMap.IncTab();
+    assignMap.PushMask();
+    assignMap.MaskSubtree(m_FalseExpr.get(), id, false);
+    m_FalseExpr->Emit(assignMap, os);
+    assignMap.PopMask();    
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
+    assignMap.DecTab();
+    assignMap.PrintTab(os) << "}" << std::endl;
     assignMap.SetEmitted(this);
+}
+
+void CondExpr::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
@@ -410,13 +402,14 @@ std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
 }
 
 std::vector<std::shared_ptr<Expression>> CondExpr::Children() const {
-    return {m_TrueExpr, m_FalseExpr};
+    return {m_Cond, m_TrueExpr, m_FalseExpr};
 }
 
 std::vector<std::shared_ptr<Expression>> CondExpr::Dervs() const {
     auto one  = std::make_shared<Constant>(1.0);
     auto zero = std::make_shared<Constant>(0.0);
-    return {IfElse(m_Cond, one, zero),
+    return {zero,
+            IfElse(m_Cond, one, zero),
             IfElse(m_Cond, zero, one)};
 }
 
@@ -543,12 +536,38 @@ std::shared_ptr<Expression> operator*(const std::shared_ptr<Expression> expr0,
             return (expr0->GetConstant() * children[1]->GetConstant()) * children[0];
         }
     }
+    if (expr0->Type() == ET_CONDEXPR) {
+        auto children = expr0->Children();
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0 &&
+            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+                return IfElse(condExpr->GetCond(), expr1, 0.0);
+        }
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0 &&
+            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
+                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+                return IfElse(condExpr->GetCond(), 0.0, expr1);
+        }
+    }
+    if (expr1->Type() == ET_CONDEXPR) {
+        auto children = expr1->Children();
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0 &&
+            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+                return IfElse(condExpr->GetCond(), expr0, 0.0);
+        }
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0 &&
+            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
+                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+                return IfElse(condExpr->GetCond(), 0.0, expr0);
+        }
+    }
     auto ret0 = std::make_shared<Multiply>(expr0, expr1);
     auto ret1 = std::make_shared<Multiply>(expr1, expr0);
     return CacheExpression(ret0, ret1);
 }
 
-std::shared_ptr<Expression> operator*(const double v0, 
+std::shared_ptr<Expression> operator*(const double v0,
                                       const std::shared_ptr<Expression> expr1) {
     if (v0 == 0.0) {
         return std::make_shared<Constant>(0.0);
