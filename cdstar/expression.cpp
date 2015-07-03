@@ -27,6 +27,12 @@ void AssignmentMap::Register(const Expression *expr) {
     }
 }
 
+void AssignmentMap::RegisterBoolean(const Expression *expr) {
+    if (m_ExprMap.find(expr) == m_ExprMap.end()) {
+        m_ExprMap[expr] = m_BooleanCount++;
+    }
+}
+
 int AssignmentMap::GetIndex(const Expression *expr) const {
     auto it = m_ExprMap.find(expr);
     if (it != m_ExprMap.end()) {
@@ -282,6 +288,138 @@ std::vector<std::shared_ptr<Expression>> Multiply::Dervs() const {
     return {m_Expr1, m_Expr0};
 }    
 
+std::string Boolean::OpToString() const {
+    switch(m_Op) {
+        case GREATER:
+            return " > ";
+            break;
+        case GREATER_OR_EQUAL:
+            return " >= ";
+            break;
+        case EQUAL:
+            return " == ";
+            break;
+        case NOT_EQUAL:
+            return " != ";
+            break;
+        case LESS_OR_EQUAL:
+            return " <= ";
+            break;
+        case LESS:
+            return " < ";
+            break;
+    }    
+    return "";
+}
+
+Boolean::Op Boolean::ReverseOp() const {
+    switch(m_Op) {
+        case GREATER:
+            return LESS_OR_EQUAL;
+            break;
+        case GREATER_OR_EQUAL:
+            return LESS;
+            break;
+        case EQUAL:
+            return NOT_EQUAL;
+            break;
+        case NOT_EQUAL:
+            return EQUAL;
+            break;
+        case LESS_OR_EQUAL:
+            return LESS;
+            break;
+        case LESS:
+            return LESS_OR_EQUAL;
+            break;
+    }    
+    return EQUAL;    
+}
+
+void Boolean::Print() const {
+    std::cerr << "(";
+    m_Expr0->Print();
+    std::cerr << OpToString();
+    m_Expr1->Print();
+    std::cerr << ")";
+}
+
+void Boolean::Register(AssignmentMap &assignMap) const {
+    m_Expr0->Register(assignMap);
+    m_Expr1->Register(assignMap);
+    assignMap.RegisterBoolean(this);    
+}
+
+void Boolean::Emit(AssignmentMap &assignMap, std::ostream &os) const {
+    if (assignMap.IsEmitted(this)) {
+        return;
+    }
+    m_Expr0->Emit(assignMap, os);
+    m_Expr1->Emit(assignMap, os);
+    os << "\tint " << GetEmitName(assignMap) << " = " << 
+        m_Expr0->GetEmitName(assignMap) << OpToString() << m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
+    assignMap.SetEmitted(this);
+}
+
+std::string Boolean::GetEmitName(const AssignmentMap &assignMap) const {
+    return std::string("b") + std::to_string(assignMap.GetIndex(this));
+}
+    
+std::vector<std::shared_ptr<Expression>> Boolean::Children() const {
+    return {};
+}
+
+std::vector<std::shared_ptr<Expression>> Boolean::Dervs() const {
+    return {};
+}
+
+void CondExpr::Print() const {
+    std::cerr << "(";    
+    m_Cond->Print();    
+    std::cerr << " ? ";
+    m_TrueExpr->Print();
+    std::cerr << " : ";
+    m_FalseExpr->Print();
+    std::cerr << ")";
+}
+
+void CondExpr::Register(AssignmentMap &assignMap) const {
+    m_Cond->Register(assignMap);
+    m_TrueExpr->Register(assignMap);
+    m_FalseExpr->Register(assignMap);
+    assignMap.Register(this);    
+}
+
+void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
+    if (assignMap.IsEmitted(this)) {
+        return;
+    }
+    m_Cond->Emit(assignMap, os);
+    m_TrueExpr->Emit(assignMap, os);
+    m_FalseExpr->Emit(assignMap, os);
+    os << "\tif (" << m_Cond->GetEmitName(assignMap) << ") {" << std::endl;    
+    os << "\t\t" << GetEmitName(assignMap) << " = " << m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
+    os << "\t} else {" << std::endl;    
+    os << "\t\t" << GetEmitName(assignMap) << " = " << m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
+    os << "\t}" << std::endl;
+    assignMap.SetEmitted(this);
+}
+
+std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
+    return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+}
+
+std::vector<std::shared_ptr<Expression>> CondExpr::Children() const {
+    return {m_TrueExpr, m_FalseExpr};
+}
+
+std::vector<std::shared_ptr<Expression>> CondExpr::Dervs() const {
+    auto one  = std::make_shared<Constant>(1.0);
+    auto zero = std::make_shared<Constant>(0.0);
+    return {IfElse(m_Cond, one, zero),
+            IfElse(m_Cond, zero, one)};
+}
+
 std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0, 
                                       const std::shared_ptr<Expression> expr1) {
     if (expr0->Type() == ET_CONSTANT && expr1->Type() == ET_CONSTANT) {
@@ -454,8 +592,59 @@ std::shared_ptr<Expression> operator/(const std::shared_ptr<Expression> expr0,
     return expr0 * Inv(expr1);
 }
 
+std::shared_ptr<Boolean> Gt(const std::shared_ptr<Expression> expr0,
+                            const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::GREATER, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    // Should fix this?
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+
+std::shared_ptr<Boolean> Gte(const std::shared_ptr<Expression> expr0,
+                             const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::GREATER_OR_EQUAL, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+                                    
+std::shared_ptr<Boolean> Eq(const std::shared_ptr<Expression> expr0,
+                            const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::EQUAL, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+
+std::shared_ptr<Boolean> Neq(const std::shared_ptr<Expression> expr0,
+                             const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::NOT_EQUAL, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+
+std::shared_ptr<Boolean> Lte(const std::shared_ptr<Expression> expr0,
+                             const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::LESS_OR_EQUAL, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+
+std::shared_ptr<Boolean> Lt(const std::shared_ptr<Expression> expr0,
+                            const std::shared_ptr<Expression> expr1) {
+    auto ret0 = std::make_shared<Boolean>(Boolean::LESS, expr0, expr1);
+    auto ret1 = ret0->Swap();
+    return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
+}
+
+std::shared_ptr<Expression> IfElse(const std::shared_ptr<Boolean> cond,
+                                   const std::shared_ptr<Expression> trueExpr,
+                                   const std::shared_ptr<Expression> falseExpr) {
+    auto ret0 = std::make_shared<CondExpr>(cond, trueExpr, falseExpr);
+    auto ret1 = ret0->Swap();
+    return CacheExpression(ret0, ret1);
+}
+
 void ClearExpressionCache() {
-    std::unordered_set<std::shared_ptr<Expression>, ExprHasher, ExprComparator>().swap(g_ExprCache);    
+    std::unordered_set<std::shared_ptr<Expression>, ExprHasher, ExprComparator>().swap(g_ExprCache);
 }
 
 std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr) {
@@ -477,7 +666,7 @@ std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &e
             return expr0;
         }        
     }    
-    return *it;                                                
+    return *it;
 }
 
 std::vector<std::shared_ptr<Expression>> Derivatives(const std::vector<ExprPtrPair> &dervExprs) {
@@ -525,11 +714,11 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
             varSet.insert(var->GetName());
         }
     }    
-    os << ") {" << std::endl;        
+    os << ") {" << std::endl;
     os << "\tdouble t[" << assignMap.GetAssignCount() << "];" << std::endl;
     
     for (auto expr : outputs) {
-        expr->Emit(assignMap, os);        
+        expr->Emit(assignMap, os);
     }
     
     os << "}" << std::endl;

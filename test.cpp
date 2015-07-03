@@ -339,8 +339,10 @@ void TestMultiOutput() {
             x[0] * x[0] + 2.0 * x[0] + 3.0,
             4.0 * x[0] * x[0] + 5.0 * x[0] + 6.0,
         };
-        if (fabs(y[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestMultiOutput Failed");
+        for (int i = 0; i < 2; i++) {
+            if (fabs(y[i] - ref[i]) > 1e-6) {
+                throw std::runtime_error("TestMultiOutput Failed");
+            }
         }
     }   
     {
@@ -355,7 +357,7 @@ void TestMultiOutput() {
                 throw std::runtime_error("TestMultiOutput Failed");
             }                
         }
-    }       
+    }
 }
 
 void TestMultiInputOutput() {
@@ -550,7 +552,84 @@ void TestJacobian() {
                 throw std::runtime_error("TestJacobian Failed");
             }                
         }
-    }       
+    }
+}
+
+void TestIfElse() {
+    // y = {x^2 + 2x + 3    if x > 0   
+    //      4*x^2 + 5x + 6  otherwise}
+    // dy/dx = {2x + 2      if x > 0
+    //          8x + 5      otherwise}
+    ClearExpressionCache();
+    auto x = std::make_shared<Variable>("x", 0);
+    auto xSq = x * x;    
+    auto y = std::make_shared<NamedAssignment>("y", 0, 
+        IfElse(Gt(x, 0.0), xSq + 2.0 * x + 3.0, 4.0 * xSq + 5.0 * x + 6.0));
+    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y};
+    
+    Library lib("func_ifelse");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);        
+    std::vector<std::shared_ptr<Expression>> derv = Derivatives({{y, x}});
+    std::vector<std::shared_ptr<NamedAssignment>> dervOutput;
+    for (int i = 0; i < (int)derv.size(); i++) {
+        dervOutput.push_back(std::make_shared<NamedAssignment>("dydx", i, derv[i]));        
+    }
+    std::string dervFuncName = "df";    
+    lib.AddFunction(input, dervOutput, dervFuncName); 
+    
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double *, double *);    
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
+    typedef void (*dfunc_t)(const double *, double *);
+    dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
+
+    {
+        double x[1] = {0.5}, y[1];
+        f(x, y);
+        double ref[1] = {
+            x[0] > 0.0 ? (x[0]*x[0] + 2.0*x[0] + 3.0) : 
+                         (4.0*x[0]*x[0] + 5.0*x[0] + 6.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElse Failed");
+        }
+    }
+    {
+        double x[1] = {-0.5}, y[1];
+        f(x, y);
+        double ref[1] = {
+            x[0] > 0.0 ? (x[0]*x[0] + 2.0*x[0] + 3.0) : 
+                         (4.0*x[0]*x[0] + 5.0*x[0] + 6.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElse Failed");
+        }
+    }    
+    {
+        double x[1] = {0.5}, y[1];
+        df(x, y);
+        double ref[1] = {
+            x[0] > 0.0 ? (2.0*x[0] + 2.0) : 
+                         (8.0*x[0] + 5.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElse Failed");
+        }
+    }
+    {
+        double x[1] = {-0.5}, y[1];
+        df(x, y);
+        double ref[1] = {
+            x[0] > 0.0 ? (2.0*x[0] + 2.0) : 
+                         (8.0*x[0] + 5.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElse Failed");
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -574,7 +653,9 @@ int main(int argc, char *argv[]) {
         TestSecondDerivative();
         std::cerr << "TestSecondDerivative Passed" << std::endl;    
         TestJacobian();
-        std::cerr << "TestJacobian Passed" << std::endl;        
+        std::cerr << "TestJacobian Passed" << std::endl;
+        TestIfElse();
+        std::cerr << "TestIfElse Passed" << std::endl;
     } catch (std::exception &ex) {
         std::cout << ex.what() << std::endl;
         return -1;
