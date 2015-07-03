@@ -7,11 +7,14 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 #include <stack>
 
 namespace cdstar {
 
 class Expression;
+class Boolean;
+class CondExpr;
 
 typedef std::shared_ptr<Expression> ExprPtr;
 typedef std::pair<ExprPtr, ExprPtr> ExprPtrPair;
@@ -49,10 +52,16 @@ public:
             os << "\t";
         return os;
     }
+    std::vector<const CondExpr*> MergeableCondExpr(const CondExpr *condExpr) const;
 private:
+    bool CondPath(const CondExpr *src, const CondExpr *tgt) const {
+        return m_CondPath.find({src, tgt}) != m_CondPath.end();
+    }
     std::unordered_map<const Expression*, int> m_ExprMap;
     std::unordered_map<const Expression*, int> m_MaxParentId;
     std::unordered_set<const Expression*> m_EmittedSet;
+    std::unordered_multimap<const Boolean*, const CondExpr*> m_CondMap;
+    std::set<std::pair<const CondExpr*, const CondExpr*>> m_CondPath;
     std::stack<std::unordered_set<const Expression*>> m_ExprMasks;
     int m_AssignCount;
     int m_BooleanCount;

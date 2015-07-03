@@ -2,7 +2,6 @@
 #include "derivativegraph.h"
 
 #include <iostream>
-#include <unordered_set>
 
 namespace cdstar {
 
@@ -25,6 +24,29 @@ void AssignmentMap::Register(const Expression *expr) {
     if (m_ExprMap.find(expr) == m_ExprMap.end()) {
         m_ExprMap[expr] = m_AssignCount++;
         m_MaxParentId[expr] = -1;
+        
+        if (expr->Type() == ET_CONDEXPR) {
+            const CondExpr *_expr = dynamic_cast<const CondExpr*>(expr);
+            m_CondMap.insert({_expr->GetCond().get(), _expr});
+            std::stack<const Expression*> dfsStack;
+            std::unordered_set<const Expression*> dfsSet;
+            dfsStack.push(expr);
+            while (!dfsStack.empty()) {
+                const Expression *curExpr = dfsStack.top();
+                dfsStack.pop();
+                if (dfsSet.find(curExpr) == dfsSet.end()) {
+                    continue;
+                }
+                dfsSet.insert(curExpr);
+                if (curExpr != expr && curExpr->Type() == ET_CONDEXPR) {
+                    const CondExpr *_curExpr = dynamic_cast<const CondExpr*>(curExpr);
+                    m_CondPath.insert({_expr, _curExpr});
+                }
+                for (auto child : curExpr->Children()) {
+                    dfsStack.push(child.get());
+                }
+            }
+        }
     }
     int id = m_ExprMap[expr];
     for (auto child : expr->Children()) {
@@ -57,6 +79,18 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, bool inSubtr
     for (auto child : expr->Children()) {
         MaskSubtree(child.get(), rootId, inSubtree);
     }
+}
+
+std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *condExpr) const {
+    std::vector<const CondExpr*> ret;
+    auto ranges = m_CondMap.equal_range(condExpr->GetCond().get());
+    for (auto it = ranges.first; it != ranges.second; it++) {
+        const CondExpr *srcExpr = it->second;
+        if (m_CondPath.find({srcExpr, condExpr}) == m_CondPath.end()) {
+            ret.push_back(srcExpr);
+        }
+    }
+    return ret;
 }
 
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
@@ -367,31 +401,60 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
         m_FalseExpr->Emit(assignMap, os);
         return;
     }
+    // Gather condition expressions to merge
+    auto condExprs = assignMap.MergeableCondExpr(this);
+    std::sort(condExprs.begin(), condExprs.end(), 
+        [&](const CondExpr *e0, const CondExpr *e1) {
+            return assignMap.GetIndex(e0) < assignMap.GetIndex(e1);
+        });
     assignMap.PushMask();
-    int id = assignMap.GetIndex(this);
-    assignMap.MaskSubtree(m_TrueExpr.get(), id, true);
-    assignMap.MaskSubtree(m_FalseExpr.get(), id, true);
-    m_TrueExpr->Emit(assignMap, os);
-    m_FalseExpr->Emit(assignMap, os);
+    int id = -1;
+    for (auto expr : condExprs) {
+        id = std::max(id, assignMap.GetIndex(expr));
+    }
+    for (auto expr : condExprs) {
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true);
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true);
+    }
+    for (auto expr : condExprs) {
+        expr->m_TrueExpr->Emit(assignMap, os);
+        expr->m_FalseExpr->Emit(assignMap, os);
+    }
     assignMap.PopMask();
     assignMap.PrintTab(os) << "if (" << m_Cond->GetEmitName(assignMap) << ") {" << std::endl;
     assignMap.IncTab();
     assignMap.PushMask();
-    assignMap.MaskSubtree(m_TrueExpr.get(), id, false);
-    m_TrueExpr->Emit(assignMap, os);
-    assignMap.PopMask();    
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
+    for (auto expr : condExprs) {
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false);
+    }
+    for (auto expr : condExprs) {
+        expr->m_TrueExpr->Emit(assignMap, os);
+    }
+    assignMap.PopMask();
+    for (auto expr : condExprs) {
+        assignMap.PrintTab(os) << expr->GetEmitName(assignMap) << " = " <<
+            expr->m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
+    }
     assignMap.DecTab();
     assignMap.PrintTab(os) << "} else {" << std::endl;
     assignMap.IncTab();
     assignMap.PushMask();
-    assignMap.MaskSubtree(m_FalseExpr.get(), id, false);
-    m_FalseExpr->Emit(assignMap, os);
-    assignMap.PopMask();    
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
+    for (auto expr : condExprs) {
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false);
+    }
+    for (auto expr : condExprs) {
+        expr->m_FalseExpr->Emit(assignMap, os);
+    }
+    assignMap.PopMask();
+    for (auto expr : condExprs) {
+        assignMap.PrintTab(os) << expr->GetEmitName(assignMap) << " = " <<
+            expr->m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
+    }
     assignMap.DecTab();
     assignMap.PrintTab(os) << "}" << std::endl;
-    assignMap.SetEmitted(this);
+    for (auto expr : condExprs) {
+        assignMap.SetEmitted(expr);
+    }
 }
 
 void CondExpr::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
@@ -453,12 +516,20 @@ std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
             return children0[1] * (children0[0] + children1[0]);
         }
     }
+    if (expr0->Type() == ET_CONDEXPR && expr1->Type() == ET_CONDEXPR) {
+        auto children0 = expr0->Children();
+        auto children1 = expr1->Children();
+        if (children0[0] == children1[0]) {
+            return IfElse(std::dynamic_pointer_cast<Boolean>(children0[0]), 
+                children0[1] + children1[1], children0[2] + children1[2]);
+        }
+    }
     auto ret0 = std::make_shared<Add>(expr0, expr1);
     auto ret1 = std::make_shared<Add>(expr1, expr0);
     return CacheExpression(ret0, ret1);
 }
 
-std::shared_ptr<Expression> operator+(const double v0, 
+std::shared_ptr<Expression> operator+(const double v0,
                                       const std::shared_ptr<Expression> expr1) {
     if (v0 == 0.0) {
         return expr1;
