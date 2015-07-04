@@ -74,7 +74,7 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
         return;        
     }
     bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
-    if ((inSubtree && !out) || (!inSubtree && out)) {        
+    if ((inSubtree && !out) || (!inSubtree && out)) {  
         m_ExprMasks.top().insert(expr);
     }
     
@@ -499,30 +499,11 @@ std::vector<std::shared_ptr<Expression>> CondExpr::Dervs() const {
 
 std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0, 
                                       const std::shared_ptr<Expression> expr1) {
-    if (expr0->Type() == ET_CONSTANT && expr1->Type() == ET_CONSTANT) {
-        return std::make_shared<Constant>(expr0->GetConstant() + expr1->GetConstant());
+    if (expr0->Type() == ET_CONSTANT) {
+        return expr0->GetConstant() + expr1;
     }
-    if (expr0->Type() == ET_CONSTANT && expr0->GetConstant() == 0.0) {
-        return expr1;
-    }
-    if (expr1->Type() == ET_CONSTANT && expr1->GetConstant() == 0.0) {
-        return expr0;
-    }
-    if (expr0->Type() == ET_ADD && expr0->HasPartialConstant() && expr1->Type() == ET_CONSTANT) {
-        auto children = expr0->Children();
-        if (expr0->HasPartialConstant() == 1) {
-            return (expr1->GetConstant() + children[0]->GetConstant()) + children[1];
-        } else {
-            return (expr1->GetConstant() + children[1]->GetConstant()) + children[0];
-        }
-    }
-    if (expr1->Type() == ET_ADD && expr1->HasPartialConstant() && expr0->Type() == ET_CONSTANT) {
-        auto children = expr1->Children();
-        if (expr1->HasPartialConstant() == 1) {
-            return (expr0->GetConstant() + children[0]->GetConstant()) + children[1];
-        } else {
-            return (expr0->GetConstant() + children[1]->GetConstant()) + children[0];
-        }
+    if (expr1->Type() == ET_CONSTANT) {
+        return expr0 + expr1->GetConstant();
     }
     if (expr0->Type() == ET_MULTIPLY && expr1->Type() == ET_MULTIPLY) {
         auto children0 = expr0->Children();
@@ -541,8 +522,30 @@ std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
         auto children0 = expr0->Children();
         auto children1 = expr1->Children();
         if (children0[0] == children1[0]) {
-            return IfElse(std::dynamic_pointer_cast<Boolean>(children0[0]), 
+            return IfElse(std::dynamic_pointer_cast<Boolean>(children0[0]),
                 children0[1] + children1[1], children0[2] + children1[2]);
+        }
+    }
+    if (expr0->Type() == ET_CONDEXPR) {
+        auto children = expr0->Children();
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), expr1, children[2] + expr1);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), children[1] + expr1, expr1);
+        }
+    }
+    if (expr1->Type() == ET_CONDEXPR) {
+        auto children = expr1->Children();
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), expr0, expr0 + children[2]);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), expr0 + children[1], expr0);
         }
     }
     auto ret0 = std::make_shared<Add>(expr0, expr1);
@@ -566,6 +569,21 @@ std::shared_ptr<Expression> operator+(const double v0,
             return (v0 + children[1]->GetConstant()) + children[0];
         }
     }
+    if (expr1->Type() == ET_CONDEXPR) {
+        auto children = expr1->Children();
+        if (children[1]->Type() == ET_CONSTANT) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(),
+                          std::make_shared<Constant>(v0 + children[1]->GetConstant()),
+                          v0 + children[2]);
+        }
+        if (children[2]->Type() == ET_CONSTANT) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(),
+                          v0 + children[1], 
+                          std::make_shared<Constant>(v0 + children[2]->GetConstant()));
+        }
+    }
     auto c = std::make_shared<Constant>(v0);
     auto ret0 = std::make_shared<Add>(c, expr1);
     auto ret1 = std::make_shared<Add>(expr1, c);
@@ -582,8 +600,7 @@ std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr) {
     return CacheExpression(std::make_shared<Negate>(expr));
 }
 
-
-std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr0, 
+std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr0,
                                       const std::shared_ptr<Expression> expr1) {
     if (expr0.get() == expr1.get()) {
         return std::make_shared<Constant>(0.0);
@@ -593,65 +610,48 @@ std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr0,
 
 std::shared_ptr<Expression> operator*(const std::shared_ptr<Expression> expr0, 
                                       const std::shared_ptr<Expression> expr1) {
-    if (expr0->Type() == ET_CONSTANT && expr1->Type() == ET_CONSTANT) {
-        return std::make_shared<Constant>(expr0->GetConstant() * expr1->GetConstant());
+    if (expr0->Type() == ET_CONSTANT) {
+        return expr0->GetConstant() * expr1;
     }
-    if ((expr0->Type() == ET_CONSTANT && expr0->GetConstant() == 0.0) ||
-        (expr1->Type() == ET_CONSTANT && expr1->GetConstant() == 0.0)) {
-        return std::make_shared<Constant>(0.0);
-    }
-    if (expr0->Type() == ET_CONSTANT && expr0->GetConstant() == 1.0) {
-        return expr1;
-    }    
-    if (expr0->Type() == ET_CONSTANT && expr0->GetConstant() == -1.0) {
-        return -expr1;
-    }    
-    if (expr1->Type() == ET_CONSTANT && expr1->GetConstant() == 1.0) {
-        return expr0;
-    }    
-    if (expr1->Type() == ET_CONSTANT && expr1->GetConstant() == -1.0) {
-        return -expr0;
-    }    
-    if (expr0->Type() == ET_MULTIPLY && expr0->HasPartialConstant() && expr1->Type() == ET_CONSTANT) {
-        auto children = expr0->Children();
-        if (expr0->HasPartialConstant() == 1) {
-            return (expr1->GetConstant() * children[0]->GetConstant()) * children[1];
-        } else {
-            return (expr1->GetConstant() * children[1]->GetConstant()) * children[0];
-        }
-    }
-    if (expr1->Type() == ET_MULTIPLY && expr1->HasPartialConstant() && expr0->Type() == ET_CONSTANT) {
-        auto children = expr1->Children();
-        if (expr1->HasPartialConstant() == 1) {
-            return (expr0->GetConstant() * children[0]->GetConstant()) * children[1];
-        } else {
-            return (expr0->GetConstant() * children[1]->GetConstant()) * children[0];
-        }
+    if (expr1->Type() == ET_CONSTANT) {
+        return expr0 * expr1->GetConstant();
     }
     if (expr0->Type() == ET_CONDEXPR) {
         auto children = expr0->Children();
-        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0 &&
-            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
-                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
-                return IfElse(condExpr->GetCond(), expr1, 0.0);
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), 0.0, children[2] * expr1);
         }
-        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0 &&
-            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
-                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
-                return IfElse(condExpr->GetCond(), 0.0, expr1);
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), expr1, children[2] * expr1);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), children[1] * expr1, 0.0);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr0);
+            return IfElse(condExpr->GetCond(), children[1] * expr1, expr1);
         }
     }
     if (expr1->Type() == ET_CONDEXPR) {
         auto children = expr1->Children();
-        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0 &&
-            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
-                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
-                return IfElse(condExpr->GetCond(), expr0, 0.0);
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), 0.0, expr0 * children[2]);
         }
-        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0 &&
-            children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
-                auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
-                return IfElse(condExpr->GetCond(), 0.0, expr0);
+        if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 1.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), expr0, expr0 * children[2]);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 0.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), expr0 * children[1], 0.0);
+        }
+        if (children[2]->Type() == ET_CONSTANT && children[2]->GetConstant() == 1.0) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(), expr0 * children[1], expr0);
         }
     }
     auto ret0 = std::make_shared<Multiply>(expr0, expr1);
@@ -679,6 +679,21 @@ std::shared_ptr<Expression> operator*(const double v0,
             return (v0 * children[1]->GetConstant()) * children[0];
         }
     }
+    if (expr1->Type() == ET_CONDEXPR) {
+        auto children = expr1->Children();
+        if (children[1]->Type() == ET_CONSTANT) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(),
+                          v0 * children[1]->GetConstant(),
+                          v0 * children[2]);
+        }
+        if (children[2]->Type() == ET_CONSTANT) {
+            auto condExpr = std::dynamic_pointer_cast<CondExpr>(expr1);
+            return IfElse(condExpr->GetCond(),
+                          v0 * children[1],
+                          v0 * children[2]->GetConstant());
+        }
+    }
     auto c = std::make_shared<Constant>(v0);
     auto ret0 = std::make_shared<Multiply>(c, expr1);
     auto ret1 = std::make_shared<Multiply>(expr1, c);
@@ -691,11 +706,11 @@ inline std::shared_ptr<Expression> Inv(const std::shared_ptr<Expression> expr) {
     }
     if (expr->Type() == ET_INVERSE) {
         return expr->Children()[0];
-    }    
+    }
     return CacheExpression(std::make_shared<Inverse>(expr));
 }
 
-std::shared_ptr<Expression> operator/(const std::shared_ptr<Expression> expr0, 
+std::shared_ptr<Expression> operator/(const std::shared_ptr<Expression> expr0,
                                       const std::shared_ptr<Expression> expr1) {
     if (expr0.get() == expr1.get()) {
         return std::make_shared<Constant>(1.0);
@@ -717,7 +732,7 @@ std::shared_ptr<Boolean> Gte(const std::shared_ptr<Expression> expr0,
     auto ret1 = ret0->Swap();
     return std::dynamic_pointer_cast<Boolean>(CacheExpression(ret0, ret1));
 }
-                                    
+
 std::shared_ptr<Boolean> Eq(const std::shared_ptr<Expression> expr0,
                             const std::shared_ptr<Expression> expr1) {
     auto ret0 = std::make_shared<Boolean>(Boolean::EQUAL, expr0, expr1);
@@ -767,16 +782,16 @@ std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &e
     return *it;
 }
 
-std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr0, 
-                                            const std::shared_ptr<Expression> &expr1) {    
+std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr0,
+                                            const std::shared_ptr<Expression> &expr1) {
     auto it = g_ExprCache.find(expr0);
     if (it == g_ExprCache.end()) {
         it = g_ExprCache.find(expr1);
         if (it == g_ExprCache.end()) {
-            g_ExprCache.insert(expr0);     
+            g_ExprCache.insert(expr0);
             return expr0;
-        }        
-    }    
+        }
+    }
     return *it;
 }
 
@@ -785,7 +800,7 @@ std::vector<std::shared_ptr<Expression>> Derivatives(const std::vector<ExprPtrPa
     return dervGraph.Derivatives();
 }
 
-void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs, 
+void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
                   const std::vector<std::shared_ptr<NamedAssignment>> &outputs,
                   const std::string &name,
                   std::ostream &os) {
@@ -793,15 +808,15 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
     for (auto expr : outputs) {
         expr->Register(assignMap);
     }
-    
+
     std::unordered_map<std::string, int> varMap;
     for (auto &var : inputs) {
         varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
     }
     for (auto &var : outputs) {
         varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
-    }    
-    
+    }
+
     os << "void " << name << "(";
     std::unordered_set<std::string> varSet;
     bool first = true;
@@ -814,7 +829,7 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
             os << "const double " << var->GetName() << "[" << varMap[var->GetName()] << "]";
             varSet.insert(var->GetName());
         }
-    }    
+    }
     for (auto &var : outputs) {
         if (varSet.find(var->GetName()) == varSet.end()) {
             if (!first) {
@@ -824,7 +839,7 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
             os << "double " << var->GetName() << "[" << varMap[var->GetName()] << "]";
             varSet.insert(var->GetName());
         }
-    }    
+    }
     os << ") {" << std::endl;
     os << "\tdouble t[" << assignMap.GetAssignCount() << "];" << std::endl;
     
