@@ -68,16 +68,37 @@ int AssignmentMap::GetIndex(const Expression *expr) const {
     return -1;
 }
 
-void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, bool inSubtree) {
+void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, 
+                                bool inSubtree, bool isLeft) {
+    if (IsEmitted(expr)) {
+        return;        
+    }
     bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
-    if ((inSubtree && !out) || (!inSubtree && out)) {
+    if ((inSubtree && !out) || (!inSubtree && out)) {        
         m_ExprMasks.top().insert(expr);
     }
+    
+    if (isLeft) {
+        m_LeftCondSubtrees.top().insert(expr);
+    } else {
+        if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
+            if (inSubtree) {
+                // Exception: the intersection of the left and right trees should
+                //            be unmasked
+                m_ExprMasks.top().erase(expr);
+            } else {
+                // Exception: the intersection of the left and right trees should
+                //            also be masked                
+                m_ExprMasks.top().insert(expr);
+            }
+        }
+    }
+    
     if (out) {
         rootId = -1;
     }
     for (auto child : expr->Children()) {
-        MaskSubtree(child.get(), rootId, inSubtree);
+        MaskSubtree(child.get(), rootId, inSubtree, isLeft);
     }
 }
 
@@ -413,8 +434,10 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
         id = std::max(id, assignMap.GetIndex(expr));
     }
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true);
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true);
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true);        
+    }
+    for (auto expr : condExprs) {
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true, false);
     }
     for (auto expr : condExprs) {
         expr->m_TrueExpr->Emit(assignMap, os);
@@ -425,23 +448,21 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.IncTab();
     assignMap.PushMask();
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false);
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false, true);
+    }
+    for (auto expr : condExprs) {
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false, false);
     }
     for (auto expr : condExprs) {
         expr->m_TrueExpr->Emit(assignMap, os);
     }
-    assignMap.PopMask();
     for (auto expr : condExprs) {
         assignMap.PrintTab(os) << expr->GetEmitName(assignMap) << " = " <<
             expr->m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
     }
     assignMap.DecTab();
     assignMap.PrintTab(os) << "} else {" << std::endl;
-    assignMap.IncTab();
-    assignMap.PushMask();
-    for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false);
-    }
+    assignMap.IncTab();    
     for (auto expr : condExprs) {
         expr->m_FalseExpr->Emit(assignMap, os);
     }

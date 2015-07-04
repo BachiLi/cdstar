@@ -36,13 +36,15 @@ public:
     }
     void PushMask() {
         m_ExprMasks.push(std::unordered_set<const Expression*>());
+        m_LeftCondSubtrees.push(std::unordered_set<const Expression*>());
     }
-    void MaskSubtree(const Expression *expr, int rootId, bool inSubtree);
+    void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft);
     bool IsMasked(const Expression *expr) const {
         if (m_ExprMasks.size() == 0) return false;
         return m_ExprMasks.top().find(expr) != m_ExprMasks.top().end();
     }
     void PopMask() {
+        m_LeftCondSubtrees.pop();
         m_ExprMasks.pop();
     }
     void IncTab() {m_TabNum++;}
@@ -63,6 +65,7 @@ private:
     std::unordered_multimap<const Boolean*, const CondExpr*> m_CondMap;
     std::set<std::pair<const CondExpr*, const CondExpr*>> m_CondPath;
     std::stack<std::unordered_set<const Expression*>> m_ExprMasks;
+    std::stack<std::unordered_set<const Expression*>> m_LeftCondSubtrees;
     int m_AssignCount;
     int m_BooleanCount;
     int m_TabNum;

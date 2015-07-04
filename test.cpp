@@ -632,6 +632,94 @@ void TestIfElse() {
     }
 }
 
+void TestIfElseRational() {
+    // y = {(x0^2 + 2x0 + 3) / x1  if x1 > 1
+    //       x0^2 + 2x0 + 3        otherwise}
+    // dy/dx0 = {2x0 + 2 / x1      if x1 > 1
+    //           2x0 + 2           otherwise}
+    // dy/dx1 = {-(2x0 + 2 / x1^2) if x1 > 1
+    //           0                 otherwise}
+    ClearExpressionCache();
+    auto x0 = std::make_shared<Variable>("x", 0);
+    auto x1 = std::make_shared<Variable>("x", 1);
+    auto x0Sq = x0 * x0;
+    auto y = std::make_shared<NamedAssignment>("y", 0, 
+        IfElse(Gt(x1, 1.0), (x0Sq + 2.0 * x0 + 3.0) / x1, (x0Sq + 2.0 * x0 + 3.0)));
+    std::vector<std::shared_ptr<Variable>> input = {x0, x1};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y};
+    
+    Library lib("func_ifelserational");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);        
+    std::vector<std::shared_ptr<Expression>> derv = Derivatives({{y, x0}, {y, x1}});
+    std::vector<std::shared_ptr<NamedAssignment>> dervOutput;
+    for (int i = 0; i < (int)derv.size(); i++) {
+        dervOutput.push_back(std::make_shared<NamedAssignment>("dydx", i, derv[i]));        
+    }
+    std::string dervFuncName = "df";    
+    lib.AddFunction(input, dervOutput, dervFuncName); 
+    
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double *, double *);    
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
+    typedef void (*dfunc_t)(const double *, double *);
+    dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
+
+    {
+        double x[2] = {0.5, 2.0}, y[1];
+        f(x, y);
+        double ref[1] = {
+            x[1] > 1.0 ? ((x[0]*x[0] + 2.0*x[0] + 3.0) / x[1]) : 
+                          (x[0]*x[0] + 2.0*x[0] + 3.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseRational Failed");
+        }
+    }
+    {
+        double x[2] = {0.5, 0.0}, y[1];
+        f(x, y);
+        double ref[1] = {
+            x[1] > 1.0 ? ((x[0]*x[0] + 2.0*x[0] + 3.0) / x[1]) : 
+                          (x[0]*x[0] + 2.0*x[0] + 3.0)
+        };
+        if (fabs(y[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseRational Failed");
+        }
+    }    
+    {
+        double x[2] = {0.5, 2.0}, y[2];
+        df(x, y);
+        double ref[2] = {
+            x[1] > 1.0 ? ((2.0*x[0] + 2.0) / x[1]) :
+                          (2.0*x[0] + 2.0),
+            x[1] > 1.0 ? (-(x[0]*x[0] + 2.0*x[0] + 3.0) / (x[1] * x[1])) :
+                         0.0
+        };
+        for (int i = 0; i < 2; i++) {
+            if (fabs(y[i] - ref[i]) > 1e-6) {
+                throw std::runtime_error("TestIfElseRational Failed");
+            }
+        }
+    }
+    {
+        double x[2] = {0.5, 0.0}, y[2];
+        df(x, y);
+        double ref[2] = {
+            x[1] > 1.0 ? ((2.0*x[0] + 2.0) / x[1]) :
+                          (2.0*x[0] + 2.0),
+            x[1] > 1.0 ? (-(x[0]*x[0] + 2.0*x[0] + 3.0) / (x[1] * x[1])) :
+                         0.0
+        };
+        for (int i = 0; i < 2; i++) {
+            if (fabs(y[i] - ref[i]) > 1e-6) {
+                throw std::runtime_error("TestIfElseRational Failed");
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     try {
         TestConstant();
@@ -656,6 +744,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestJacobian Passed" << std::endl;
         TestIfElse();
         std::cerr << "TestIfElse Passed" << std::endl;
+        TestIfElseRational();
+        std::cerr << "TestIfElseRational Passed" << std::endl;
     } catch (std::exception &ex) {
         std::cout << ex.what() << std::endl;
         return -1;
