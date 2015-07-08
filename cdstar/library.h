@@ -17,11 +17,13 @@ namespace cdstar {
 
 class Argument;
 class NamedAssignment;
+class StructType;
 
 class Library {
 public:
     Library(const std::string &name, bool includeHeaders = true);
     virtual ~Library();
+    void AddStruct(const StructType &structType);
     void AddFunction(const std::vector<std::shared_ptr<Argument>> &input, 
                      const std::vector<std::shared_ptr<NamedAssignment>> &output,
                      const std::string &name);

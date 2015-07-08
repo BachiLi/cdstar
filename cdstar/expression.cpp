@@ -114,30 +114,60 @@ std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *co
     return ret;
 }
 
-DoubleArgument::DoubleArgument(const std::string &name) :
-    m_Name(name), m_Expr(std::make_shared<Variable>(name, -1)) {}
-
-std::string DoubleArgument::GetDeclaration() const {
-    return "double " + m_Name;
-}
-
-std::shared_ptr<Expression> DoubleArgument::GetExpr() const {
-    return m_Expr;
-}
-
-DoubleArrayArgument::DoubleArrayArgument(const std::string &name, int size) :
-        m_Name(name) {
+DoubleArgument::DoubleArgument(const std::string &name, int size) :
+        Argument(name) {
     for (int i = 0; i < size; i++) {
-        m_Exprs.push_back(std::make_shared<Variable>(name, i));
+        m_Exprs.push_back(std::make_shared<Variable>(name, size == 1 ? -1 : i));
     }
 }
 
-std::string DoubleArrayArgument::GetDeclaration() const {
-    return "double " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
+std::string DoubleArgument::GetDeclaration() const {
+    if (m_Exprs.size() == 1) {
+        return "double " + m_Name;
+    } else {
+        return "double " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
+    }
 }
 
-std::shared_ptr<Expression> DoubleArrayArgument::GetExpr(int index) const {
+std::shared_ptr<Expression> DoubleArgument::GetExpr(int index) const {
     return m_Exprs[index];
+}
+
+StructType::StructType(const std::string &name, 
+                       const std::vector<std::shared_ptr<Argument>> &args) :
+        m_Name(name), m_Args(args) {}
+
+std::shared_ptr<StructInst> StructType::GenStructInst(const std::string &name) const {
+    return std::make_shared<StructInst>(name, m_Args);
+}
+
+void StructType::EmitForwardDeclaration(std::ostream &os) const {
+    os << "typedef struct {" << std::endl;
+    for (auto &arg : m_Args) {
+        os << "\t" << arg->GetDeclaration() << ";" << std::endl;
+    }
+    os << "} " << m_Name << ";" << std::endl;
+}
+
+StructInst::StructInst(const std::string &name,
+                       const std::vector<std::shared_ptr<Argument>> &args) {
+    for (auto &arg : args) {
+        m_Args[arg->GetName()] = arg->ChangeName(name + "." + arg->GetName());
+    }
+}
+
+StructArgument::StructArgument(const std::string &name, 
+                               const StructType &structType,
+                               int size) :
+        Argument(name), m_StructType(structType) {
+    for (int i = 0; i < size; i++) {
+        m_StructInsts.push_back(m_StructType.GenStructInst(
+            m_Name + "[" + std::to_string(i) + "]"));
+    }
+}
+
+std::string StructArgument::GetDeclaration() const {
+    return m_StructType.GetName() + " " + m_Name + "[" + std::to_string(m_StructInsts.size()) + "]";
 }
 
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {

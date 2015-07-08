@@ -258,7 +258,7 @@ void TestMultiInput() {
     // dy/dx0 = x1 (4x0 + 1)
     // dy/dx1 = 2x0^2 + x0 + 0.5
     ClearExpressionCache();
-    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto xArg = std::make_shared<DoubleArgument>("x", 2);
     auto x0 = xArg->GetExpr(0);
     auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
@@ -375,7 +375,7 @@ void TestMultiInputOutput() {
     // dy0/dx1 = x0^2 + 3
     // dy1/dx1 = 8*x0*x1 + 10*x1    
     ClearExpressionCache();    
-    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto xArg = std::make_shared<DoubleArgument>("x", 2);
     auto x0 = xArg->GetExpr(0);
     auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
@@ -652,7 +652,7 @@ void TestIfElseRational() {
     // dy/dx1 = {-(2x0 + 2 / x1^2) if x1 > 1
     //           0                 otherwise}
     ClearExpressionCache();
-    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto xArg = std::make_shared<DoubleArgument>("x", 2);
     auto x0 = xArg->GetExpr(0);
     auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
@@ -674,8 +674,8 @@ void TestIfElseRational() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
-    func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
+    typedef void (*func_t)(const double *, double *);
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());
     typedef void (*dfunc_t)(const double *, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
@@ -733,6 +733,49 @@ void TestIfElseRational() {
     }
 }
 
+void TestStruct() {
+    // struct Foo {
+    //     double x;
+    //     double y[2];
+    // } foo;
+    // z = foo.x + foo.y[0] * foo.y[1];
+    ClearExpressionCache();
+    std::vector<std::shared_ptr<Argument>> fooArgList = {
+        std::make_shared<DoubleArgument>("x"),
+        std::make_shared<DoubleArgument>("y", 2)};
+    StructType fooType("Foo", fooArgList);
+    auto fooArg = std::make_shared<StructArgument>("foo", fooType);
+    auto x = fooArg->GetArg("x")->GetExpr();
+    auto y0 = fooArg->GetArg("y")->GetExpr(0);
+    auto y1 = fooArg->GetArg("y")->GetExpr(1);
+    auto z = std::make_shared<NamedAssignment>("z", 0, x + y0 * y1);
+    std::vector<std::shared_ptr<Argument>> input = {fooArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {z};
+    
+    Library lib("func_struct");
+    lib.AddStruct(fooType);
+    lib.AddFunction(input, output, "f");
+    lib.CompileAndLoad();
+    // Is it possible/worthwhile to use some template/macro magic to generate StructType from this?
+    struct Foo {
+        double x;
+        double y[2];
+    };
+    typedef void (*func_t)(const Foo *, double *);
+    func_t f = (func_t)lib.LoadFunction("f");
+    {
+        Foo foo = {0.5, {0.6, 0.7}};
+        double z[1];
+        f(&foo, z);
+        double ref[1] = {
+            foo.x + foo.y[0] * foo.y[1]
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestStruct Failed");
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     try {
         TestConstant();
@@ -759,6 +802,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElse Passed" << std::endl;
         TestIfElseRational();
         std::cerr << "TestIfElseRational Passed" << std::endl;
+        TestStruct();
+        std::cerr << "TestStruct Passed" << std::endl;
     } catch (std::exception &ex) {
         std::cout << ex.what() << std::endl;
         return -1;

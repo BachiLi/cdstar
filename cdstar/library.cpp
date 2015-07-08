@@ -50,6 +50,10 @@ Library::~Library() {
     }
 }
 
+void Library::AddStruct(const StructType &structType) {
+    structType.EmitForwardDeclaration(m_Stream);
+}
+
 void Library::AddFunction(const std::vector<std::shared_ptr<Argument>> &input, 
                           const std::vector<std::shared_ptr<NamedAssignment>> &output,
                           const std::string &name) {
