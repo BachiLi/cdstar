@@ -92,11 +92,37 @@ inline void hash_combine(std::size_t &seed, const T &v) {
     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
+class Argument {
+public:
+    virtual std::string GetDeclaration() const = 0;
+};
+
+class DoubleArgument : public Argument {
+public:
+    DoubleArgument(const std::string &name);
+    std::string GetDeclaration() const;
+    std::shared_ptr<Expression> GetExpr() const;
+private:
+    std::string m_Name;
+    std::shared_ptr<Expression> m_Expr;
+};
+
+class DoubleArrayArgument : public Argument {
+public:
+    DoubleArrayArgument(const std::string &name, int size);
+    std::string GetDeclaration() const;
+    std::shared_ptr<Expression> GetExpr(int index) const;
+private:
+    std::string m_Name;
+    std::vector<std::shared_ptr<Expression>> m_Exprs;
+};
+
 class Expression {
 public:
     virtual ExpressionType Type() const = 0;
     virtual void Print() const = 0;
     virtual void Register(AssignmentMap &assignMap) const;
+    virtual bool UseTmpVar() const {return true;}
     virtual void Emit(AssignmentMap &assignMap, std::ostream &os) const;
     virtual std::string GetEmitName(const AssignmentMap &assignMap) const = 0;
     virtual std::vector<std::shared_ptr<Expression>> Children() const = 0;
@@ -116,6 +142,7 @@ public:
             m_Name(name), m_Index(index) {
         m_Hash = ComputeHash();
     }
+    bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_VARIABLE;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
@@ -145,6 +172,7 @@ public:
     Constant(const double value) : m_Value(value) {
         m_Hash = ComputeHash();
     }
+    bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_CONSTANT;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
@@ -176,6 +204,7 @@ public:
             m_Name(name), m_Index(index), m_Expr(expr) {
         m_Hash = ComputeHash();
     }
+    bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_NAMED_ASSIGNMENT;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
@@ -618,7 +647,7 @@ inline std::shared_ptr<Expression> IfElse(const std::shared_ptr<Boolean> cond,
 
 std::vector<std::shared_ptr<Expression>> Derivatives(const std::vector<ExprPtrPair> &dervExprs);
 
-void EmitFunction(const std::vector<std::shared_ptr<Variable>> &input,
+void EmitFunction(const std::vector<std::shared_ptr<Argument>> &input,
                   const std::vector<std::shared_ptr<NamedAssignment>> &output,
                   const std::string &name,
                   std::ostream &os);

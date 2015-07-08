@@ -15,14 +15,14 @@
 
 namespace cdstar {
 
-class Variable;
+class Argument;
 class NamedAssignment;
 
 class Library {
 public:
     Library(const std::string &name, bool includeHeaders = true);
     virtual ~Library();
-    void AddFunction(const std::vector<std::shared_ptr<Variable>> &input, 
+    void AddFunction(const std::vector<std::shared_ptr<Argument>> &input, 
                      const std::vector<std::shared_ptr<NamedAssignment>> &output,
                      const std::string &name);
     void CompileAndLoad();

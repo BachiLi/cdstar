@@ -8,9 +8,10 @@ using namespace cdstar;
 
 void TestConstant() {
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto y = std::make_shared<NamedAssignment>("y", 0, std::make_shared<Constant>(1.0));
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_constant");
@@ -26,13 +27,13 @@ void TestConstant() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {1.0};
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -40,7 +41,7 @@ void TestConstant() {
         }
     }   
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         double ref[1] = {0.0};        
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -51,9 +52,10 @@ void TestConstant() {
 
 void TestLinear() {
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto y = std::make_shared<NamedAssignment>("y", 0, x);
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_linear");
@@ -69,38 +71,39 @@ void TestLinear() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
-        double ref[1] = {0.5};
+        double ref[1] = {x};
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestLinear Failed");
         }
-    }   
+    }
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         double ref[1] = {1.0};        
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestLinear Failed");
-        }                        
-    }       
+        }       
+    }   
 }
 
 void TestPolynomial() {
     // y = 2x^3 - 3x^2 + 4x + 5
     // dy/dx = 6x^2 - 6x + 4
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto xSq = x * x;
     auto xCu = xSq * x;
     auto y = std::make_shared<NamedAssignment>("y", 0, 2.0 * xCu - 3.0 * xSq + 4.0 * x + 5.0);    
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_polynomial");
@@ -116,26 +119,26 @@ void TestPolynomial() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {
-            2.0 * x[0] * x[0] * x[0] - 3.0 * x[0] * x[0] + 4.0 * x[0] + 5.0
+            2.0 * x * x * x - 3.0 * x * x + 4.0 * x + 5.0
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestPolynomial Failed");
         }
     }   
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         double ref[1] = {
-            6.0 * x[0] * x[0] - 6.0 * x[0] + 4.0
+            6.0 * x * x - 6.0 * x + 4.0
         };
         
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -148,10 +151,11 @@ void TestRational() {
     // y = (x^2 + 2x + 3) / (4x^2 + 5x + 6)
     // dy/dx = - 3 * (x^2 + 4x + 1) / (4x^2 + 5x + 6)^2
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto xSq = x * x;
     auto y = std::make_shared<NamedAssignment>("y", 0, (xSq + 2.0 * x + 3.0) / (4.0 * xSq + 5.0 * x + 6.0));
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_rational");
@@ -167,28 +171,28 @@ void TestRational() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {
-            (x[0] * x[0] + 2.0 * x[0] + 3.0) / (4.0 * x[0] * x[0] + 5.0 * x[0] + 6.0)
+            (x * x + 2.0 * x + 3.0) / (4.0 * x * x + 5.0 * x + 6.0)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestRational Failed");
         }
     }   
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         auto sq = [](const double x){return x*x;};
         double ref[1] = {
-            -(3.0 * x[0] * x[0] + 12.0 * x[0] + 3.0) /
-            sq(4.0 * x[0] * x[0] + 5.0 * x[0] + 6.0)
+            -(3.0 * x * x + 12.0 * x + 3.0) /
+            sq(4.0 * x * x + 5.0 * x + 6.0)
         };
         
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -201,9 +205,10 @@ void TestTrigonometric() {
     // y = sin(x) + cos(x) + tan(x)
     // dy/dx = cos(x) - sin(x) + sec(x)^2
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);    
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto y = std::make_shared<NamedAssignment>("y", 0, sin(x) + cos(x) + tan(x));
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_trigonometric");
@@ -219,27 +224,27 @@ void TestTrigonometric() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {
-            std::sin(x[0]) + std::cos(x[0]) + std::tan(x[0])
+            std::sin(x) + std::cos(x) + std::tan(x)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestTrigonometric Failed");
         }
     }   
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         auto sq = [](const double x){return x*x;};
         double ref[1] = {
-            std::cos(x[0]) - std::sin(x[0]) + (1.0 / sq(std::cos(x[0])))
+            std::cos(x) - std::sin(x) + (1.0 / sq(std::cos(x)))
         };
         
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -253,11 +258,12 @@ void TestMultiInput() {
     // dy/dx0 = x1 (4x0 + 1)
     // dy/dx1 = 2x0^2 + x0 + 0.5
     ClearExpressionCache();
-    auto x0 = std::make_shared<Variable>("x", 0);
-    auto x1 = std::make_shared<Variable>("x", 1);
+    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto x0 = xArg->GetExpr(0);
+    auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
     auto y = std::make_shared<NamedAssignment>("y", 0, x1 * (2.0 * x0Sq + x0 + 0.5));    
-    std::vector<std::shared_ptr<Variable>> input = {x0, x1};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_multiinput");
@@ -307,11 +313,12 @@ void TestMultiOutput() {
     // dy0/dx = 2x + 2
     // dy1/dx = 8x + 5
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto xSq = x * x;
     auto y0 = std::make_shared<NamedAssignment>("y", 0, xSq + 2.0 * x + 3.0);
     auto y1 = std::make_shared<NamedAssignment>("y", 1, 4.0 * xSq + 5.0 * x + 6.0);
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y0, y1};
     
     Library lib("func_multioutput");
@@ -327,17 +334,17 @@ void TestMultiOutput() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[2];
+        double x = 0.5, y[2];
         f(x, y);
         double ref[2] = {
-            x[0] * x[0] + 2.0 * x[0] + 3.0,
-            4.0 * x[0] * x[0] + 5.0 * x[0] + 6.0,
+            x * x + 2.0 * x + 3.0,
+            4.0 * x * x + 5.0 * x + 6.0,
         };
         for (int i = 0; i < 2; i++) {
             if (fabs(y[i] - ref[i]) > 1e-6) {
@@ -346,11 +353,11 @@ void TestMultiOutput() {
         }
     }   
     {
-        double x[1] = {0.5}, y[2];
+        double x = 0.5, y[2];
         df(x, y);
         double ref[2] = {
-            2.0 * x[0] + 2.0,
-            8.0 * x[0] + 5.0
+            2.0 * x + 2.0,
+            8.0 * x + 5.0
         };
         for (int i = 0; i < 2; i++) {
             if (fabs(y[i] - ref[i]) > 1e-6) {
@@ -367,14 +374,15 @@ void TestMultiInputOutput() {
     // dy1/dx0 = 4x1^2 + 6
     // dy0/dx1 = x0^2 + 3
     // dy1/dx1 = 8*x0*x1 + 10*x1    
-    ClearExpressionCache();
-    auto x0 = std::make_shared<Variable>("x", 0);
-    auto x1 = std::make_shared<Variable>("x", 1);
+    ClearExpressionCache();    
+    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto x0 = xArg->GetExpr(0);
+    auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
     auto x1Sq = x1 * x1;
     auto y0 = std::make_shared<NamedAssignment>("y", 0, x0Sq * x1 + 2.0 * x0 + 3.0 * x1);
     auto y1 = std::make_shared<NamedAssignment>("y", 1, 4.0 * x0 * x1Sq + 5.0 * x1Sq + 6.0 * x0);
-    std::vector<std::shared_ptr<Variable>> input = {x0, x1};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y0, y1};
     
     Library lib("func_multiinout");
@@ -430,11 +438,12 @@ void TestSecondDerivative() {
     // dy/dx = 30x^2 + 18x + 8
     // d^2y/dx^2 = 60x + 18
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto xSq = x * x;
     auto xCu = xSq * x;
     auto y = std::make_shared<NamedAssignment>("y", 0, 10.0 * xCu + 9.0 * xSq + 8.0 * x + 7.0);    
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_second_derv");
@@ -457,28 +466,28 @@ void TestSecondDerivative() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
-    typedef void (*d2func_t)(const double *, double *);
+    typedef void (*d2func_t)(const double, double *);
     dfunc_t d2f = (d2func_t)lib.LoadFunction(derv2FuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {
-            10.0 * x[0] * x[0] * x[0] + 9.0 * x[0] * x[0] + 8.0 * x[0] + 7.0
+            10.0 * x * x * x + 9.0 * x * x + 8.0 * x + 7.0
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestSecondDerivative Failed");
         }
     }   
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         double ref[1] = {
-            30.0 * x[0] * x[0] + 18.0 * x[0] + 8.0
+            30.0 * x * x + 18.0 * x + 8.0
         };
         
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -486,10 +495,10 @@ void TestSecondDerivative() {
         }                        
     }           
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         d2f(x, y);
         double ref[1] = {
-            60.0 * x[0] + 18.0
+            60.0 * x + 18.0
         };
         
         if (fabs(y[0] - ref[0]) > 1e-6) {
@@ -505,12 +514,14 @@ void TestJacobian() {
     //     |  5   cos(y) |
     // det(J) = 2xycos(y) - 5x^2
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);    
-    auto y = std::make_shared<Variable>("y", 0);    
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto yArg = std::make_shared<DoubleArgument>("y");
+    auto x = xArg->GetExpr();    
+    auto y = yArg->GetExpr();
     auto xSq = x * x;    
     auto f0 = std::make_shared<NamedAssignment>("f", 0, xSq * y);
     auto f1 = std::make_shared<NamedAssignment>("f", 1, 5.0 * x + sin(y));
-    std::vector<std::shared_ptr<Variable>> input = {x, y};
+    std::vector<std::shared_ptr<Argument>> input = {xArg, yArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {f0, f1};
     
     Library lib("func_jacobian");
@@ -523,17 +534,17 @@ void TestJacobian() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, const double *, double *);    
+    typedef void (*func_t)(const double, const double, double *);    
     func_t func = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*jac_t)(const double *, const double *, double *);
+    typedef void (*jac_t)(const double, const double, double *);
     jac_t jac = (jac_t)lib.LoadFunction(jacobianName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1] = {0.3}, f[2];
+        double x = 0.5, y = 0.3, f[2];
         func(x, y, f);
         double ref[2] = {
-            x[0] * x[0] * y[0],
-            5.0 * x[0] + std::sin(y[0])
+            x * x * y,
+            5.0 * x + std::sin(y)
         };
         for (int i = 0; i < 2; i++) {
             if (fabs(f[i] - ref[i]) > 1e-6) {
@@ -542,10 +553,10 @@ void TestJacobian() {
         }
     }   
     {
-        double x[1] = {0.5}, y[1] = {0.3}, j[1];
+        double x = 0.5, y = 0.3, j[1];
         jac(x, y, j);
         double ref[1] = {
-            2.0 * x[0] * y[0] * std::cos(y[0]) - 5.0 * x[0] * x[0]
+            2.0 * x * y * std::cos(y) - 5.0 * x * x
         };
         for (int i = 0; i < 1; i++) {
             if (fabs(j[i] - ref[i]) > 1e-6) {
@@ -561,11 +572,12 @@ void TestIfElse() {
     // dy/dx = {2x + 2      if x > 0
     //          8x + 5      otherwise}
     ClearExpressionCache();
-    auto x = std::make_shared<Variable>("x", 0);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
     auto xSq = x * x;    
     auto y = std::make_shared<NamedAssignment>("y", 0, 
         IfElse(Gt(x, 0.0), xSq + 2.0 * x + 3.0, 4.0 * xSq + 5.0 * x + 6.0));
-    std::vector<std::shared_ptr<Variable>> input = {x};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_ifelse");
@@ -581,50 +593,50 @@ void TestIfElse() {
     
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double *, double *);    
+    typedef void (*func_t)(const double, double *);    
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());    
-    typedef void (*dfunc_t)(const double *, double *);
+    typedef void (*dfunc_t)(const double, double *);
     dfunc_t df = (dfunc_t)lib.LoadFunction(dervFuncName.c_str());    
 
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         f(x, y);
         double ref[1] = {
-            x[0] > 0.0 ? (x[0]*x[0] + 2.0*x[0] + 3.0) : 
-                         (4.0*x[0]*x[0] + 5.0*x[0] + 6.0)
+            x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                      (4.0*x*x + 5.0*x + 6.0)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElse Failed");
         }
     }
     {
-        double x[1] = {-0.5}, y[1];
+        double x = -0.5, y[1];
         f(x, y);
         double ref[1] = {
-            x[0] > 0.0 ? (x[0]*x[0] + 2.0*x[0] + 3.0) : 
-                         (4.0*x[0]*x[0] + 5.0*x[0] + 6.0)
+            x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                      (4.0*x*x + 5.0*x + 6.0)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElse Failed");
         }
     }    
     {
-        double x[1] = {0.5}, y[1];
+        double x = 0.5, y[1];
         df(x, y);
         double ref[1] = {
-            x[0] > 0.0 ? (2.0*x[0] + 2.0) : 
-                         (8.0*x[0] + 5.0)
+            x > 0.0 ? (2.0*x + 2.0) : 
+                      (8.0*x + 5.0)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElse Failed");
         }
     }
     {
-        double x[1] = {-0.5}, y[1];
+        double x = -0.5, y[1];
         df(x, y);
         double ref[1] = {
-            x[0] > 0.0 ? (2.0*x[0] + 2.0) : 
-                         (8.0*x[0] + 5.0)
+            x > 0.0 ? (2.0*x + 2.0) : 
+                      (8.0*x + 5.0)
         };
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElse Failed");
@@ -640,12 +652,13 @@ void TestIfElseRational() {
     // dy/dx1 = {-(2x0 + 2 / x1^2) if x1 > 1
     //           0                 otherwise}
     ClearExpressionCache();
-    auto x0 = std::make_shared<Variable>("x", 0);
-    auto x1 = std::make_shared<Variable>("x", 1);
+    auto xArg = std::make_shared<DoubleArrayArgument>("x", 2);
+    auto x0 = xArg->GetExpr(0);
+    auto x1 = xArg->GetExpr(1);
     auto x0Sq = x0 * x0;
     auto y = std::make_shared<NamedAssignment>("y", 0, 
         IfElse(Gt(x1, 1.0), (x0Sq + 2.0 * x0 + 3.0) / x1, (x0Sq + 2.0 * x0 + 3.0)));
-    std::vector<std::shared_ptr<Variable>> input = {x0, x1};
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
     Library lib("func_ifelserational");
@@ -750,6 +763,6 @@ int main(int argc, char *argv[]) {
         std::cout << ex.what() << std::endl;
         return -1;
     }
-    std::cout << "All Passed" << std::endl;         
+    std::cout << "All Passed" << std::endl;
     return 0;
 }

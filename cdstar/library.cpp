@@ -50,7 +50,7 @@ Library::~Library() {
     }
 }
 
-void Library::AddFunction(const std::vector<std::shared_ptr<Variable>> &input, 
+void Library::AddFunction(const std::vector<std::shared_ptr<Argument>> &input, 
                           const std::vector<std::shared_ptr<NamedAssignment>> &output,
                           const std::string &name) {
     EmitFunction(input, output, name, m_Stream);    

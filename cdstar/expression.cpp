@@ -114,6 +114,32 @@ std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *co
     return ret;
 }
 
+DoubleArgument::DoubleArgument(const std::string &name) :
+    m_Name(name), m_Expr(std::make_shared<Variable>(name, -1)) {}
+
+std::string DoubleArgument::GetDeclaration() const {
+    return "double " + m_Name;
+}
+
+std::shared_ptr<Expression> DoubleArgument::GetExpr() const {
+    return m_Expr;
+}
+
+DoubleArrayArgument::DoubleArrayArgument(const std::string &name, int size) :
+        m_Name(name) {
+    for (int i = 0; i < size; i++) {
+        m_Exprs.push_back(std::make_shared<Variable>(name, i));
+    }
+}
+
+std::string DoubleArrayArgument::GetDeclaration() const {
+    return "double " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
+}
+
+std::shared_ptr<Expression> DoubleArrayArgument::GetExpr(int index) const {
+    return m_Exprs[index];
+}
+
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     if (assignMap.IsEmitted(this)) {
         return;
@@ -139,18 +165,28 @@ void Expression::Register(AssignmentMap &assignMap) const {
     for (auto child : children) {
         child->Register(assignMap);
     }
-    assignMap.Register(this);
+    if (UseTmpVar()) {
+        assignMap.Register(this);
+    }
 }
 
 void Variable::Print() const {
-    std::cerr << m_Name << "[" << m_Index << "]";
+    if (m_Index >= 0) {
+        std::cerr << m_Name << "[" << m_Index << "]";
+    } else {
+        std::cerr << m_Name << std::endl;
+    }
 }
 
 void Variable::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string Variable::GetEmitName(const AssignmentMap &assignMap) const {
-    return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");    
+    if (m_Index >= 0) {
+        return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");
+    } else {
+        return m_Name;
+    }
 }
 
 std::vector<std::shared_ptr<Expression>> Variable::Children() const {
@@ -808,7 +844,7 @@ std::vector<std::shared_ptr<Expression>> Derivatives(const std::vector<ExprPtrPa
     return dervGraph.Derivatives();
 }
 
-void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
+void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
                   const std::vector<std::shared_ptr<NamedAssignment>> &outputs,
                   const std::string &name,
                   std::ostream &os) {
@@ -818,9 +854,6 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
     }
 
     std::unordered_map<std::string, int> varMap;
-    for (auto &var : inputs) {
-        varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
-    }
     for (auto &var : outputs) {
         varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
     }
@@ -828,15 +861,12 @@ void EmitFunction(const std::vector<std::shared_ptr<Variable>> &inputs,
     os << "void " << name << "(";
     std::unordered_set<std::string> varSet;
     bool first = true;
-    for (auto &var : inputs) {
-        if (varSet.find(var->GetName()) == varSet.end()) {
-            if (!first) {
-                os << ", ";
-            }
-            first = false;
-            os << "const double " << var->GetName() << "[" << varMap[var->GetName()] << "]";
-            varSet.insert(var->GetName());
+    for (auto &arg : inputs) {
+        if (!first) {
+            os << ", ";
         }
+        first = false;
+        os << "const " << arg->GetDeclaration();
     }
     for (auto &var : outputs) {
         if (varSet.find(var->GetName()) == varSet.end()) {
