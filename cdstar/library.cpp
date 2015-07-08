@@ -61,7 +61,7 @@ void Library::CompileAndLoad() {
 #ifdef _WIN32    
     std::string cmd = "gcc -O3 -shared -o " + m_LibFileName + " " + m_CSourceFileName;
 #else
-    std::string cmd = "gcc -O3 -shared -fPIC -Wl -o " + m_LibFileName + " " + m_CSourceFileName;
+    std::string cmd = "gcc -O3 -shared -fPIC -o " + m_LibFileName + " " + m_CSourceFileName;
 #endif        
     std::system(cmd.c_str());
     m_LibHandle = LoadLib(m_LibFileName.c_str());    

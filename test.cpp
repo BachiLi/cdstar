@@ -149,8 +149,8 @@ void TestRational() {
     // dy/dx = - 3 * (x^2 + 4x + 1) / (4x^2 + 5x + 6)^2
     ClearExpressionCache();
     auto x = std::make_shared<Variable>("x", 0);
-    auto xSq = x * x;    
-    auto y = std::make_shared<NamedAssignment>("y", 0, (xSq + 2.0 * x + 3.0) / (4.0 * xSq + 5.0 * x + 6.0));    
+    auto xSq = x * x;
+    auto y = std::make_shared<NamedAssignment>("y", 0, (xSq + 2.0 * x + 3.0) / (4.0 * xSq + 5.0 * x + 6.0));
     std::vector<std::shared_ptr<Variable>> input = {x};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y};
     
@@ -162,8 +162,8 @@ void TestRational() {
     for (int i = 0; i < (int)derv.size(); i++) {
         dervOutput.push_back(std::make_shared<NamedAssignment>("dydx", i, derv[i]));        
     }
-    std::string dervFuncName = "df";    
-    lib.AddFunction(input, dervOutput, dervFuncName); 
+    std::string dervFuncName = "df";
+    lib.AddFunction(input, dervOutput, dervFuncName);
     
     lib.CompileAndLoad();
     
@@ -194,7 +194,7 @@ void TestRational() {
         if (fabs(y[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestRational Failed");
         }                        
-    }       
+    }
 }
 
 void TestTrigonometric() {

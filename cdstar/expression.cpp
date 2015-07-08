@@ -235,8 +235,8 @@ void Inverse::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 
 std::vector<std::shared_ptr<Expression>> Inverse::Dervs() const {
     // d(1/x)/dx = -1/x^2
-    return {-(std::shared_ptr<Expression>(const_cast<Inverse*>(this)) * 
-              std::shared_ptr<Expression>(const_cast<Inverse*>(this)))};
+    std::shared_ptr<Inverse> thisPtr = std::const_pointer_cast<Inverse>(shared_from_this());
+    return {-(thisPtr * thisPtr)};
 }
 
 void Sin::Print() const {
@@ -767,6 +767,14 @@ std::shared_ptr<Expression> IfElse(const std::shared_ptr<Boolean> cond,
     auto ret0 = std::make_shared<CondExpr>(cond, trueExpr, falseExpr);
     auto ret1 = ret0->Swap();
     return CacheExpression(ret0, ret1);
+}
+
+void PrintExpressionCache() {
+    for (auto it : g_ExprCache) {
+        it->Print();
+        std::cerr << std::endl;
+        std::cerr << "use_count:" << it.use_count() << std::endl;
+    }
 }
 
 void ClearExpressionCache() {

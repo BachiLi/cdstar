@@ -235,7 +235,7 @@ protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
-class Inverse : public UnaryAssignment {
+class Inverse : public UnaryAssignment, public std::enable_shared_from_this<Inverse> {
 public:
     Inverse(const std::shared_ptr<Expression> &expr) : 
             UnaryAssignment(expr) {
@@ -464,6 +464,7 @@ private:
     std::shared_ptr<Expression> m_TrueExpr, m_FalseExpr;
 };
 
+void PrintExpressionCache();
 void ClearExpressionCache();
 std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr);
 std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &expr0,
