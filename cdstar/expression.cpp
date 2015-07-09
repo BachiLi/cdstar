@@ -134,15 +134,24 @@ std::shared_ptr<Expression> DoubleArgument::GetExpr(int index) const {
 }
 
 StructType::StructType(const std::string &name, 
-                       const std::vector<std::shared_ptr<Argument>> &args) :
-        m_Name(name), m_Args(args) {}
+                       const std::vector<std::shared_ptr<Argument>> &args,
+                       bool isUnion) :
+        m_Name(name), m_IsUnion(isUnion) {
+    for (auto &arg : args) {
+        m_Args.push_back(arg->SetParent(""));
+    }
+}
 
 std::shared_ptr<StructInst> StructType::GenStructInst(const std::string &name) const {
     return std::make_shared<StructInst>(name, m_Args);
 }
 
 void StructType::EmitForwardDeclaration(std::ostream &os) const {
-    os << "typedef struct {" << std::endl;
+    if (!m_IsUnion) {
+        os << "typedef struct {" << std::endl;
+    } else {
+        os << "typedef union {" << std::endl;
+    }
     for (auto &arg : m_Args) {
         os << "\t" << arg->GetDeclaration() << ";" << std::endl;
     }
@@ -152,22 +161,31 @@ void StructType::EmitForwardDeclaration(std::ostream &os) const {
 StructInst::StructInst(const std::string &name,
                        const std::vector<std::shared_ptr<Argument>> &args) {
     for (auto &arg : args) {
-        m_Args[arg->GetName()] = arg->ChangeName(name + "." + arg->GetName());
+        m_Args[arg->GetName()] = arg->SetParent(name);
     }
 }
 
 StructArgument::StructArgument(const std::string &name, 
                                const StructType &structType,
-                               int size) :
-        Argument(name), m_StructType(structType) {
+                               int size,
+                               bool nested) :
+        Argument(name), m_StructType(structType), m_Nested(nested) {
     for (int i = 0; i < size; i++) {
-        m_StructInsts.push_back(m_StructType.GenStructInst(
-            m_Name + "[" + std::to_string(i) + "]"));
+        if (m_Nested && size == 1) {
+            m_StructInsts.push_back(m_StructType.GenStructInst(m_Name));
+        } else {
+            m_StructInsts.push_back(m_StructType.GenStructInst(
+                m_Name + "[" + std::to_string(i) + "]"));
+        }
     }
 }
 
 std::string StructArgument::GetDeclaration() const {
-    return m_StructType.GetName() + " " + m_Name + "[" + std::to_string(m_StructInsts.size()) + "]";
+    if (m_Nested && m_StructInsts.size() == 1) {
+        return m_StructType.GetName() + " " + m_Name;
+    } else {
+        return m_StructType.GetName() + " " + m_Name + "[" + std::to_string(m_StructInsts.size()) + "]";
+    }
 }
 
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {

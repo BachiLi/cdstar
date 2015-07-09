@@ -96,7 +96,7 @@ class Argument {
 public:
     Argument(const std::string &name) : m_Name(name) {}
     virtual std::string GetDeclaration() const = 0;
-    virtual std::shared_ptr<Argument> ChangeName(const std::string &name) const = 0;
+    virtual std::shared_ptr<Argument> SetParent(const std::string &parentName) const = 0;
     std::string GetName() const {
         return m_Name;
     }
@@ -114,8 +114,12 @@ class DoubleArgument : public Argument {
 public:
     DoubleArgument(const std::string &name, int size = 1);
     std::string GetDeclaration() const;
-    std::shared_ptr<Argument> ChangeName(const std::string &name) const {
-        return std::make_shared<DoubleArgument>(name, m_Exprs.size());
+    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
+        if (parentName == "") {
+            return std::make_shared<DoubleArgument>(m_Name, m_Exprs.size());
+        } else {
+            return std::make_shared<DoubleArgument>(parentName + "." + m_Name, m_Exprs.size());
+        }
     }
     std::shared_ptr<Expression> GetExpr(int index = 0) const;
 private:
@@ -127,13 +131,15 @@ class StructInst;
 class StructType {
 public:
     StructType(const std::string &name,
-               const std::vector<std::shared_ptr<Argument>> &args);
+               const std::vector<std::shared_ptr<Argument>> &args,
+               bool isUnion = false);
     std::string GetName() const {return m_Name;}
     std::shared_ptr<StructInst> GenStructInst(const std::string &name) const;
     void EmitForwardDeclaration(std::ostream &os) const;
 private:
     std::string m_Name;
     std::vector<std::shared_ptr<Argument>> m_Args;
+    bool m_IsUnion;
 };
 
 class StructArgument;
@@ -153,10 +159,17 @@ class StructArgument : public Argument {
 public:
     StructArgument(const std::string &name, 
                    const StructType &structType,
-                   int size = 1);
+                   int size = 1,
+                   bool nested = false);
     std::string GetDeclaration() const;
-    std::shared_ptr<Argument> ChangeName(const std::string &name) const {
-        return std::make_shared<StructArgument>(name, m_StructType);
+    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
+        if (parentName == "") {
+            return std::make_shared<StructArgument>(
+                m_Name, m_StructType, m_StructInsts.size(), true);
+        } else {
+            return std::make_shared<StructArgument>(
+                parentName + "." + m_Name, m_StructType, m_StructInsts.size(), true);
+        }
     }
     std::shared_ptr<Argument> GetArg(const std::string &argName, int index = 0) const {
         return m_StructInsts[index]->GetArg(argName);
@@ -164,6 +177,7 @@ public:
 private:
     StructType m_StructType;
     std::vector<std::shared_ptr<StructInst>> m_StructInsts;
+    bool m_Nested;
 };
 
 class Expression {

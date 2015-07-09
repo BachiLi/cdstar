@@ -740,10 +740,9 @@ void TestStruct() {
     // } foo;
     // z = foo.x + foo.y[0] * foo.y[1];
     ClearExpressionCache();
-    std::vector<std::shared_ptr<Argument>> fooArgList = {
+    StructType fooType("Foo", {
         std::make_shared<DoubleArgument>("x"),
-        std::make_shared<DoubleArgument>("y", 2)};
-    StructType fooType("Foo", fooArgList);
+        std::make_shared<DoubleArgument>("y", 2)});
     auto fooArg = std::make_shared<StructArgument>("foo", fooType);
     auto x = fooArg->GetArg("x")->GetExpr();
     auto y0 = fooArg->GetArg("y")->GetExpr(0);
@@ -776,6 +775,94 @@ void TestStruct() {
     }
 }
 
+void TestUnion() {
+    // struct Foo {
+    //     double a;
+    //     double b[2];
+    // } foo;
+    // struct Bar {
+    //     double c[2];
+    //     double d;
+    // } bar;
+    // union FooBar {
+    //     Foo foo;
+    //     Bar bar;
+    // } foobar;
+    // z = x > 0 ? foo.a * foo.b[0] * foo.b[1] : bar.c[0] + bar.c[1] + bar.d;
+    ClearExpressionCache();
+    StructType fooType("Foo", {
+        std::make_shared<DoubleArgument>("a"),
+        std::make_shared<DoubleArgument>("b", 2)});
+    StructType barType("Bar", {
+        std::make_shared<DoubleArgument>("c", 2),
+        std::make_shared<DoubleArgument>("d")});
+    StructType foobarType("FooBar", {
+        std::make_shared<StructArgument>("foo", fooType),
+        std::make_shared<StructArgument>("bar", barType)},
+        true);
+    auto fooBarArg = std::make_shared<StructArgument>("foobar", foobarType);
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
+    auto foo = fooBarArg->GetArg("foo")->GetArg("a")->GetExpr() *
+               fooBarArg->GetArg("foo")->GetArg("b")->GetExpr(0) *
+               fooBarArg->GetArg("foo")->GetArg("b")->GetExpr(1);
+    auto bar = fooBarArg->GetArg("bar")->GetArg("c")->GetExpr(0) +
+               fooBarArg->GetArg("bar")->GetArg("c")->GetExpr(1) +
+               fooBarArg->GetArg("bar")->GetArg("d")->GetExpr();
+    auto z = std::make_shared<NamedAssignment>("z", 0, IfElse(Gt(x, 0.0), foo, bar));
+    std::vector<std::shared_ptr<Argument>> input = {fooBarArg, xArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {z};
+    
+    Library lib("func_union");
+    lib.AddStruct(fooType);
+    lib.AddStruct(barType);
+    lib.AddStruct(foobarType);
+    lib.AddFunction(input, output, "f");
+    lib.CompileAndLoad();
+    struct Foo {
+        double a;
+        double b[2];
+    };
+    struct Bar {
+        double c[2];
+        double d;
+    };
+    union FooBar {
+        Foo foo;
+        Bar bar;
+    };
+    typedef void (*func_t)(const FooBar *, const double, double *);
+    func_t f = (func_t)lib.LoadFunction("f");
+    {
+        double x = -0.3;
+        FooBar foobar;
+        foobar.bar = {{0.6, 0.7}, 0.8};
+        double z[1];
+        f(&foobar, x, z);
+        double ref[1] = {
+            x > 0.0 ? foobar.foo.a * foobar.foo.b[0] * foobar.foo.b[1] :
+                      foobar.bar.c[0] + foobar.bar.c[1] + foobar.bar.d
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestUnion Failed");
+        }
+    }
+    {
+        double x = 0.3;
+        FooBar foobar;
+        foobar.foo = {0.3, {0.4, 0.5}};
+        double z[1];
+        f(&foobar, x, z);
+        double ref[1] = {
+            x > 0.0 ? foobar.foo.a * foobar.foo.b[0] * foobar.foo.b[1] :
+                      foobar.bar.c[0] + foobar.bar.c[1] + foobar.bar.d
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestUnion Failed");
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     try {
         TestConstant();
@@ -804,6 +891,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElseRational Passed" << std::endl;
         TestStruct();
         std::cerr << "TestStruct Passed" << std::endl;
+        TestUnion();
+        std::cerr << "TestUnion Passed" << std::endl;
     } catch (std::exception &ex) {
         std::cout << ex.what() << std::endl;
         return -1;
