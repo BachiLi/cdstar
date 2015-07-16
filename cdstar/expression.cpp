@@ -404,6 +404,21 @@ std::vector<std::shared_ptr<Expression>> Tan::Dervs() const {
     return {Inv(c * c)};
 }
 
+void Sqrt::Print() const {
+    std::cerr << "sqrt(";
+    m_Expr->Print();
+    std::cerr << ")";
+}
+
+void Sqrt::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sqrt(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
+}
+
+std::vector<std::shared_ptr<Expression>> Sqrt::Dervs() const {
+    std::shared_ptr<Sqrt> thisPtr = std::const_pointer_cast<Sqrt>(shared_from_this());
+    return {Inv(2.0 * thisPtr)};
+}
+
 std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }

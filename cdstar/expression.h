@@ -81,6 +81,7 @@ enum ExpressionType {
     ET_SIN,
     ET_COS,
     ET_TAN,
+    ET_SQRT,
     ET_ADD,
     ET_MULTIPLY,
     ET_BOOLEAN,
@@ -442,6 +443,24 @@ protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
+class Sqrt : public UnaryAssignment, public std::enable_shared_from_this<Sqrt> {
+public:
+    Sqrt(const std::shared_ptr<Expression> &expr) : 
+            UnaryAssignment(expr) {
+        m_Hash = ComputeHash();
+    }
+    ExpressionType Type() const {return ET_SQRT;}
+    void Print() const;
+    std::vector<std::shared_ptr<Expression>> Dervs() const;    
+    size_t ComputeHash() const {
+        std::size_t hash = std::hash<int>()(ET_SQRT);
+        hash_combine(hash, m_Expr->GetHash());
+        return hash;
+    }
+protected:    
+    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
+};
+
 class BinaryAssignment : public Expression {
 public:
     BinaryAssignment(const std::shared_ptr<Expression> expr0,
@@ -607,54 +626,85 @@ std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &e
 
 std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
                                       const std::shared_ptr<Expression> expr1);
-                                             
 std::shared_ptr<Expression> operator+(const double v0,
                                       const std::shared_ptr<Expression> expr1);
-
 inline std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
                                              const double v1) {
     return v1 + expr0;
 }
+inline std::shared_ptr<Expression>& operator+=(std::shared_ptr<Expression> &expr0, 
+                                               const std::shared_ptr<Expression> &expr1) {
+    expr0 = expr0 + expr1;
+    return expr0;
+}
+inline std::shared_ptr<Expression>& operator+=(std::shared_ptr<Expression> &expr0, 
+                                               const double v1) {
+    expr0 = expr0 + v1;
+    return expr0;
+}
 
 std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr);
-
 std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr0, 
                                       const std::shared_ptr<Expression> expr1);
-
 inline std::shared_ptr<Expression> operator-(const double v0,
                                              const std::shared_ptr<Expression> expr1) {
     return v0 + (-expr1);
 }
-
 inline std::shared_ptr<Expression> operator-(const std::shared_ptr<Expression> expr0,
                                              const double v1) {
     return expr0 + (-v1);
 }
+inline std::shared_ptr<Expression>& operator-=(std::shared_ptr<Expression> &expr0, 
+                                               const std::shared_ptr<Expression> &expr1) {
+    expr0 = expr0 - expr1;
+    return expr0;
+}
+inline std::shared_ptr<Expression>& operator-=(std::shared_ptr<Expression> &expr0, 
+                                               const double v1) {
+    expr0 = expr0 - v1;
+    return expr0;
+}
 
 std::shared_ptr<Expression> operator*(const std::shared_ptr<Expression> expr0,
                                       const std::shared_ptr<Expression> expr1);
-
 std::shared_ptr<Expression> operator*(const double v0,
                                       const std::shared_ptr<Expression> expr1);
-
 inline std::shared_ptr<Expression> operator*(const std::shared_ptr<Expression> expr0,
                                              const double v1) {
     return v1 * expr0;
+}
+inline std::shared_ptr<Expression>& operator*=(std::shared_ptr<Expression> &expr0, 
+                                               const std::shared_ptr<Expression> &expr1) {
+    expr0 = expr0 * expr1;
+    return expr0;
+}
+inline std::shared_ptr<Expression>& operator*=(std::shared_ptr<Expression> &expr0, 
+                                               const double v1) {
+    expr0 = expr0 * v1;
+    return expr0;
 }
 
 std::shared_ptr<Expression> Inv(const std::shared_ptr<Expression> expr);
 
 std::shared_ptr<Expression> operator/(const std::shared_ptr<Expression> expr0,
                                       const std::shared_ptr<Expression> expr1);
-
 inline std::shared_ptr<Expression> operator/(const double v0,
                                              const std::shared_ptr<Expression> expr1) {
     return v0 * Inv(expr1);
 }
-
 inline std::shared_ptr<Expression> operator/(const std::shared_ptr<Expression> expr0,
                                              const double v1) {
     return expr0 * (1.0 / v1);
+}
+inline std::shared_ptr<Expression>& operator/=(std::shared_ptr<Expression> &expr0, 
+                                               const std::shared_ptr<Expression> &expr1) {
+    expr0 = expr0 / expr1;
+    return expr0;
+}
+inline std::shared_ptr<Expression>& operator/=(std::shared_ptr<Expression> &expr0, 
+                                               const double v1) {
+    expr0 = expr0 / v1;
+    return expr0;
 }
 
 inline std::shared_ptr<Expression> sin(const std::shared_ptr<Expression> expr) {
@@ -667,6 +717,10 @@ inline std::shared_ptr<Expression> cos(const std::shared_ptr<Expression> expr) {
 
 inline std::shared_ptr<Expression> tan(const std::shared_ptr<Expression> expr) {
     return CacheExpression(std::make_shared<Tan>(expr));
+}
+
+inline std::shared_ptr<Expression> sqrt(const std::shared_ptr<Expression> expr) {
+    return CacheExpression(std::make_shared<Sqrt>(expr));
 }
 
 // >
