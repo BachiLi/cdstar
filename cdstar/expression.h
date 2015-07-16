@@ -82,6 +82,8 @@ enum ExpressionType {
     ET_COS,
     ET_TAN,
     ET_SQRT,
+    ET_ASIN,
+    ET_ACOS,
     ET_ADD,
     ET_MULTIPLY,
     ET_BOOLEAN,
@@ -461,6 +463,42 @@ protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
+class ASin : public UnaryAssignment {
+public:
+    ASin(const std::shared_ptr<Expression> &expr) :
+            UnaryAssignment(expr) {
+        m_Hash = ComputeHash();
+    }
+    ExpressionType Type() const {return ET_ASIN;}
+    void Print() const;
+    std::vector<std::shared_ptr<Expression>> Dervs() const;    
+    size_t ComputeHash() const {
+        std::size_t hash = std::hash<int>()(ET_ASIN);
+        hash_combine(hash, m_Expr->GetHash());
+        return hash;
+    }
+protected:
+    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
+};
+
+class ACos : public UnaryAssignment {
+public:
+    ACos(const std::shared_ptr<Expression> &expr) :
+            UnaryAssignment(expr) {
+        m_Hash = ComputeHash();
+    }
+    ExpressionType Type() const {return ET_ACOS;}
+    void Print() const;
+    std::vector<std::shared_ptr<Expression>> Dervs() const;
+    size_t ComputeHash() const {
+        std::size_t hash = std::hash<int>()(ET_ACOS);
+        hash_combine(hash, m_Expr->GetHash());
+        return hash;
+    }
+protected:    
+    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
+};
+
 class BinaryAssignment : public Expression {
 public:
     BinaryAssignment(const std::shared_ptr<Expression> expr0,
@@ -717,6 +755,14 @@ inline std::shared_ptr<Expression> cos(const std::shared_ptr<Expression> expr) {
 
 inline std::shared_ptr<Expression> tan(const std::shared_ptr<Expression> expr) {
     return CacheExpression(std::make_shared<Tan>(expr));
+}
+
+inline std::shared_ptr<Expression> asin(const std::shared_ptr<Expression> expr) {
+    return CacheExpression(std::make_shared<ASin>(expr));
+}
+
+inline std::shared_ptr<Expression> acos(const std::shared_ptr<Expression> expr) {
+    return CacheExpression(std::make_shared<ACos>(expr));
 }
 
 inline std::shared_ptr<Expression> sqrt(const std::shared_ptr<Expression> expr) {

@@ -414,6 +414,34 @@ void Sqrt::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sqrt(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
+void ASin::Print() const {
+    std::cerr << "asin(";
+    m_Expr->Print();
+    std::cerr << ")";
+}
+
+void ASin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = asin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
+}
+
+std::vector<std::shared_ptr<Expression>> ASin::Dervs() const {    
+    return {Inv(sqrt(1.0 - m_Expr * m_Expr))};
+}
+
+void ACos::Print() const {
+    std::cerr << "acos(";
+    m_Expr->Print();
+    std::cerr << ")";
+}
+
+void ACos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = acos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
+}
+
+std::vector<std::shared_ptr<Expression>> ACos::Dervs() const {    
+    return {-Inv(sqrt(1.0 - m_Expr * m_Expr))};
+}
+
 std::vector<std::shared_ptr<Expression>> Sqrt::Dervs() const {
     std::shared_ptr<Sqrt> thisPtr = std::const_pointer_cast<Sqrt>(shared_from_this());
     return {Inv(2.0 * thisPtr)};
