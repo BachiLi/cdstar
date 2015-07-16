@@ -680,6 +680,14 @@ inline std::shared_ptr<Boolean> Gt(const std::shared_ptr<Expression> expr0,
                                    const double v1) {
     return Gt(expr0, std::make_shared<Constant>(v1));
 }
+inline std::shared_ptr<Boolean> Gt(const int v0,
+                                   const std::shared_ptr<Expression> expr1) {
+    return Gt(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Gt(const std::shared_ptr<Expression> expr0,
+                                   const int v1) {
+    return Gt(expr0, std::make_shared<IntegerConstant>(v1));
+}
 
 // >=
 std::shared_ptr<Boolean> Gte(const std::shared_ptr<Expression> expr0,
@@ -692,7 +700,16 @@ inline std::shared_ptr<Boolean> Gte(const std::shared_ptr<Expression> expr0,
                                     const double v1) {
     return Gte(expr0, std::make_shared<Constant>(v1));
 }
-                                    
+inline std::shared_ptr<Boolean> Gte(const int v0,
+                                    const std::shared_ptr<Expression> expr1) {
+    return Gte(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Gte(const std::shared_ptr<Expression> expr0,
+                                    const int v1) {
+    return Gte(expr0, std::make_shared<IntegerConstant>(v1));
+}
+ 
+// ==                                   
 std::shared_ptr<Boolean> Eq(const std::shared_ptr<Expression> expr0,
                             const std::shared_ptr<Expression> expr1);
 inline std::shared_ptr<Boolean> Eq(const double v0,
@@ -702,8 +719,17 @@ inline std::shared_ptr<Boolean> Eq(const double v0,
 inline std::shared_ptr<Boolean> Eq(const std::shared_ptr<Expression> expr0,
                                    const double v1) {
     return Eq(expr0, std::make_shared<Constant>(v1));
-}                                    
+}
+inline std::shared_ptr<Boolean> Eq(const int v0,
+                                   const std::shared_ptr<Expression> expr1) {
+    return Eq(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Eq(const std::shared_ptr<Expression> expr0,
+                                   const int v1) {
+    return Eq(expr0, std::make_shared<IntegerConstant>(v1));
+}
 
+// !=
 std::shared_ptr<Boolean> Neq(const std::shared_ptr<Expression> expr0,
                                     const std::shared_ptr<Expression> expr1);
 inline std::shared_ptr<Boolean> Neq(const double v0,
@@ -713,8 +739,17 @@ inline std::shared_ptr<Boolean> Neq(const double v0,
 inline std::shared_ptr<Boolean> Neq(const std::shared_ptr<Expression> expr0,
                                     const double v1) {
     return Neq(expr0, std::make_shared<Constant>(v1));
-}                                    
+}
+inline std::shared_ptr<Boolean> Neq(const int v0,
+                                    const std::shared_ptr<Expression> expr1) {
+    return Neq(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Neq(const std::shared_ptr<Expression> expr0,
+                                    const int v1) {
+    return Neq(expr0, std::make_shared<IntegerConstant>(v1));
+}
 
+// <=
 std::shared_ptr<Boolean> Lte(const std::shared_ptr<Expression> expr0,
                              const std::shared_ptr<Expression> expr1);
 inline std::shared_ptr<Boolean> Lte(const double v0,
@@ -724,8 +759,17 @@ inline std::shared_ptr<Boolean> Lte(const double v0,
 inline std::shared_ptr<Boolean> Lte(const std::shared_ptr<Expression> expr0,
                                     const double v1) {
     return Lte(expr0, std::make_shared<Constant>(v1));
-}                                    
+}
+inline std::shared_ptr<Boolean> Lte(const int v0,
+                                    const std::shared_ptr<Expression> expr1) {
+    return Lte(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Lte(const std::shared_ptr<Expression> expr0,
+                                    const int v1) {
+    return Lte(expr0, std::make_shared<IntegerConstant>(v1));
+}
 
+// <
 std::shared_ptr<Boolean> Lt(const std::shared_ptr<Expression> expr0,
                                    const std::shared_ptr<Expression> expr1);
 inline std::shared_ptr<Boolean> Lt(const double v0,
@@ -735,7 +779,15 @@ inline std::shared_ptr<Boolean> Lt(const double v0,
 inline std::shared_ptr<Boolean> Lt(const std::shared_ptr<Expression> expr0,
                                    const double v1) {
     return Lt(expr0, std::make_shared<Constant>(v1));
-}                                   
+}
+inline std::shared_ptr<Boolean> Lt(const int v0,
+                                   const std::shared_ptr<Expression> expr1) {
+    return Lt(std::make_shared<IntegerConstant>(v0), expr1);
+}
+inline std::shared_ptr<Boolean> Lt(const std::shared_ptr<Expression> expr0,
+                                   const int v1) {
+    return Lt(expr0, std::make_shared<IntegerConstant>(v1));
+}
 
 std::shared_ptr<Expression> IfElse(const std::shared_ptr<Boolean> cond,
                                    const std::shared_ptr<Expression> trueExpr,
