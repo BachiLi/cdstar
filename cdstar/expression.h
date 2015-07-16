@@ -74,6 +74,7 @@ private:
 enum ExpressionType {
     ET_VARIABLE,
     ET_CONSTANT,
+    ET_INTEGER_CONSTANT,
     ET_NAMED_ASSIGNMENT,
     ET_NEGATE,
     ET_INVERSE,
@@ -119,6 +120,22 @@ public:
             return std::make_shared<DoubleArgument>(m_Name, m_Exprs.size());
         } else {
             return std::make_shared<DoubleArgument>(parentName + "." + m_Name, m_Exprs.size());
+        }
+    }
+    std::shared_ptr<Expression> GetExpr(int index = 0) const;
+private:
+    std::vector<std::shared_ptr<Expression>> m_Exprs;
+};
+
+class IntegerArgument : public Argument {
+public:
+    IntegerArgument(const std::string &name, int size = 1);
+    std::string GetDeclaration() const;
+    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
+        if (parentName == "") {
+            return std::make_shared<IntegerArgument>(m_Name, m_Exprs.size());
+        } else {
+            return std::make_shared<IntegerArgument>(parentName + "." + m_Name, m_Exprs.size());
         }
     }
     std::shared_ptr<Expression> GetExpr(int index = 0) const;
@@ -258,6 +275,32 @@ protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
 private:
     double m_Value;
+};
+
+class IntegerConstant : public Expression {
+public:
+    IntegerConstant(const int value) : m_Value(value) {
+        m_Hash = ComputeHash();
+    }
+    bool UseTmpVar() const {return false;}
+    ExpressionType Type() const {return ET_INTEGER_CONSTANT;}
+    void Print() const;
+    std::string GetEmitName(const AssignmentMap &assignMap) const;
+    std::vector<std::shared_ptr<Expression>> Children() const;
+    std::vector<std::shared_ptr<Expression>> Dervs() const;
+    bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
+        std::shared_ptr<IntegerConstant> _expr = std::dynamic_pointer_cast<IntegerConstant>(expr);
+        return m_Value == _expr->m_Value;
+    }
+    size_t ComputeHash() const {
+        std::size_t hash = std::hash<int>()(m_Value);
+        return hash;
+    }
+protected:
+    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
+private:
+    int m_Value;
 };
 
 class NamedAssignment : public Expression {

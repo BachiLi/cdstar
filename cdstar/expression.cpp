@@ -133,6 +133,25 @@ std::shared_ptr<Expression> DoubleArgument::GetExpr(int index) const {
     return m_Exprs[index];
 }
 
+IntegerArgument::IntegerArgument(const std::string &name, int size) :
+        Argument(name) {
+    for (int i = 0; i < size; i++) {
+        m_Exprs.push_back(std::make_shared<Variable>(name, size == 1 ? -1 : i));
+    }
+}
+
+std::string IntegerArgument::GetDeclaration() const {
+    if (m_Exprs.size() == 1) {
+        return "int " + m_Name;
+    } else {
+        return "int " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
+    }
+}
+
+std::shared_ptr<Expression> IntegerArgument::GetExpr(int index) const {
+    return m_Exprs[index];
+}
+
 StructType::StructType(const std::string &name, 
                        const std::vector<std::shared_ptr<Argument>> &args,
                        bool isUnion) :
@@ -261,6 +280,25 @@ std::vector<std::shared_ptr<Expression>> Constant::Children() const {
 }
 
 std::vector<std::shared_ptr<Expression>> Constant::Dervs() const {
+    return std::vector<std::shared_ptr<Expression>>();
+}
+
+void IntegerConstant::Print() const {    
+    std::cerr << m_Value;
+}
+
+void IntegerConstant::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+}
+
+std::string IntegerConstant::GetEmitName(const AssignmentMap &assignMap) const {
+    return std::to_string(m_Value);    
+}
+
+std::vector<std::shared_ptr<Expression>> IntegerConstant::Children() const {
+    return std::vector<std::shared_ptr<Expression>>();
+}
+
+std::vector<std::shared_ptr<Expression>> IntegerConstant::Dervs() const {
     return std::vector<std::shared_ptr<Expression>>();
 }
 
