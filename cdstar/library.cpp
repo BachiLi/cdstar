@@ -51,6 +51,16 @@ Library::~Library() {
 }
 
 void Library::AddStruct(const StructType &structType) {
+    if (m_RegisteredStruct.find(structType.GetName()) != m_RegisteredStruct.end()) {
+        return;
+    }
+    m_RegisteredStruct.insert(structType.GetName());
+    for (auto it : structType.GetArgs()) {
+        std::shared_ptr<StructType> st = it->GetStructType();
+        if (st.get() != nullptr) {
+            AddStruct(*st);
+        }
+    }
     structType.EmitForwardDeclaration(m_Stream);
 }
 

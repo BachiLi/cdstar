@@ -4,6 +4,7 @@
 #include <memory>
 #include <fstream>
 #include <vector>
+#include <unordered_set>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -35,6 +36,7 @@ private:
     std::string m_CSourceFileName;
     std::string m_LibFileName;
     std::vector<std::string> m_FunctionNames;
+    std::unordered_set<std::string> m_RegisteredStruct;
     lib_t m_LibHandle;
     bool m_Loaded;
 };

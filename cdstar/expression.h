@@ -96,6 +96,8 @@ inline void hash_combine(std::size_t &seed, const T &v) {
     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
+struct StructType;
+
 class Argument {
 public:
     Argument(const std::string &name) : m_Name(name) {}
@@ -109,6 +111,9 @@ public:
     }
     virtual std::shared_ptr<Expression> GetExpr(int index = 0) const {
         return std::shared_ptr<Expression>();
+    }
+    virtual std::shared_ptr<StructType> GetStructType() const {
+        return std::shared_ptr<StructType>();
     }
 protected:
     std::string m_Name;
@@ -156,6 +161,9 @@ public:
     std::string GetName() const {return m_Name;}
     std::shared_ptr<StructInst> GenStructInst(const std::string &name) const;
     void EmitForwardDeclaration(std::ostream &os) const;
+    std::vector<std::shared_ptr<Argument>> GetArgs() const {
+        return m_Args;
+    }
 private:
     std::string m_Name;
     std::vector<std::shared_ptr<Argument>> m_Args;
@@ -193,6 +201,9 @@ public:
     }
     std::shared_ptr<Argument> GetArg(const std::string &argName, int index = 0) const {
         return m_StructInsts[index]->GetArg(argName);
+    }
+    std::shared_ptr<StructType> GetStructType() const {
+        return std::make_shared<StructType>(m_StructType);
     }
 private:
     StructType m_StructType;
