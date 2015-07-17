@@ -34,7 +34,7 @@ void AssignmentMap::Register(const Expression *expr) {
             while (!dfsStack.empty()) {
                 const Expression *curExpr = dfsStack.top();
                 dfsStack.pop();
-                if (dfsSet.find(curExpr) == dfsSet.end()) {
+                if (dfsSet.find(curExpr) != dfsSet.end()) {
                     continue;
                 }
                 dfsSet.insert(curExpr);
@@ -70,7 +70,7 @@ int AssignmentMap::GetIndex(const Expression *expr) const {
 
 void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, 
                                 bool inSubtree, bool isLeft) {
-    if (IsEmitted(expr)) {
+    if (IsEmitted(expr) || !expr->UseTmpVar()) {
         return;        
     }
     bool out = rootId < 0 || m_MaxParentId[expr] > rootId;

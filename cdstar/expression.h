@@ -96,7 +96,7 @@ inline void hash_combine(std::size_t &seed, const T &v) {
     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
-struct StructType;
+class StructType;
 
 class Argument {
 public:
@@ -177,7 +177,12 @@ public:
     StructInst(const std::string &name,
                const std::vector<std::shared_ptr<Argument>> &args);
     std::shared_ptr<Argument> GetArg(const std::string &argName) const {
-        return m_Args.find(argName)->second;
+        auto it = m_Args.find(argName);
+        if (it == m_Args.end()) {
+            std::cerr << "argName:" << argName << std::endl;
+            throw std::runtime_error("Argument not found in StructInst");
+        }
+        return it->second;
     }
 private:
     std::unordered_map<std::string, std::shared_ptr<Argument>> m_Args;
