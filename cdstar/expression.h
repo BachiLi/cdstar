@@ -252,6 +252,7 @@ public:
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Variable> _expr = std::dynamic_pointer_cast<Variable>(expr);
         return m_Name == _expr->m_Name && m_Index == _expr->m_Index;
@@ -284,6 +285,7 @@ public:
         return std::make_shared<Constant>(v);
     }
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Constant> _expr = std::dynamic_pointer_cast<Constant>(expr);
         return m_Value == _expr->m_Value;
@@ -310,6 +312,7 @@ public:
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<IntegerConstant> _expr = std::dynamic_pointer_cast<IntegerConstant>(expr);
         return m_Value == _expr->m_Value;
@@ -340,6 +343,7 @@ public:
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;    
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<NamedAssignment> _expr = std::dynamic_pointer_cast<NamedAssignment>(expr);
         return m_Name == _expr->m_Name && m_Expr->Equal(_expr->m_Expr);
@@ -365,6 +369,7 @@ public:
     virtual std::string GetEmitName(const AssignmentMap &assignMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     virtual bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<UnaryAssignment> _expr = std::dynamic_pointer_cast<UnaryAssignment>(expr);
         return m_Expr->Equal(_expr->m_Expr);
@@ -567,6 +572,7 @@ public:
     void Print() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Add> _expr = std::dynamic_pointer_cast<Add>(expr);
         return m_Expr0->Equal(_expr->m_Expr0) && m_Expr1->Equal(_expr->m_Expr1);
@@ -592,6 +598,7 @@ public:
     void Print() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;   
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Multiply> _expr = std::dynamic_pointer_cast<Multiply>(expr);
         return m_Expr0->Equal(_expr->m_Expr0) && m_Expr1->Equal(_expr->m_Expr1);
@@ -628,6 +635,7 @@ public:
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<Boolean> _expr = std::dynamic_pointer_cast<Boolean>(expr);        
         return m_Op == _expr->m_Op && m_Expr0->Equal(_expr->m_Expr0) && m_Expr1->Equal(_expr->m_Expr1);
@@ -666,6 +674,7 @@ public:
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
+        if (this == expr.get()) return true;
         if (expr->Type() != Type() || GetHash() != expr->GetHash()) return false;
         std::shared_ptr<CondExpr> _expr = std::dynamic_pointer_cast<CondExpr>(expr);
         return m_Cond->Equal(_expr->m_Cond) &&

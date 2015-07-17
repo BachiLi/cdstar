@@ -137,14 +137,19 @@ int DominatorsFinder::Intersect(int b1, int b2) {
     return finger1;
 }
 
-std::pair<bool, std::shared_ptr<Expression>> 
-        FactorExpr(const DervGraph                &graph,
-                   const DervGraphVertex          &vert0,
-                   const DervGraphVertex          &vert1,
-                   std::set<std::pair<int, int> > &edges) {
-    if(vert0 == vert1) {
+typedef std::pair<bool, std::shared_ptr<Expression>> FactorExprRet;
+FactorExprRet FactorExpr(const DervGraph                &graph,
+                         const DervGraphVertex          &vert0,
+                         const DervGraphVertex          &vert1,
+                         std::set<std::pair<int, int>>  &edges,
+                         std::unordered_map<DervGraphVertex, FactorExprRet> &visited) {
+    if (vert0 == vert1) {
         return std::pair<bool, std::shared_ptr<Expression> >(true, std::make_shared<Constant>(1.0));
-    }    
+    }
+    auto visitedIt = visited.find(vert0);
+    if (visitedIt != visited.end()) {
+        return visitedIt->second;
+    }
     bool primary = false;
     std::shared_ptr<Expression> expr = std::make_shared<Constant>(0.0);
     for(auto it = boost::out_edges(vert0, graph); it.first != it.second; it.first++) {
@@ -152,21 +157,23 @@ std::pair<bool, std::shared_ptr<Expression>>
         std::shared_ptr<Expression> edgeExpr = boost::get(edge_property_expression_t(), graph, e);
         bool primaryEdge;
         std::shared_ptr<Expression> factorExpr;
-        std::tie(primaryEdge, factorExpr) = FactorExpr(graph, boost::target(e, graph), vert1, edges);
+        std::tie(primaryEdge, factorExpr) = FactorExpr(graph, boost::target(e, graph), vert1, edges, visited);
         if(primaryEdge) {
             edges.insert(std::make_pair<int, int>(vert0, boost::target(e, graph)));
             primary = true;
             expr = expr + edgeExpr * factorExpr;
         }
     }
-    return std::pair<bool, std::shared_ptr<Expression> >(primary, expr);
+    auto result = FactorExprRet(primary, expr);
+    visited[vert0] = result;
+    return result;
 }
 
 DerivativeGraph::DerivativeGraph(const std::vector<ExprPtrPair>& dervExprs) {
     std::vector<std::pair<DervGraphVertex, DervGraphVertex>> srcTgtPairs(dervExprs.size());
     for(size_t i = 0; i < dervExprs.size(); i++) {
         srcTgtPairs[i].first = BuildGraph(dervExprs[i].first);
-    }    
+    }
     for(size_t i = 0; i < dervExprs.size(); i++) {
         bool found = false;
         for(auto it = boost::vertices(m_Graph); it.first != it.second; it.first++) {
@@ -195,9 +202,9 @@ DerivativeGraph::DerivativeGraph(const std::vector<ExprPtrPair>& dervExprs) {
         BuildSubgraph(target, source, subgraph, vertSet);
         DerivativeSubgraph dSubgrpah = { subgraph, source, target };
         subgraphs.push_back(dSubgrpah);
-    }            
-    FactorSubgraphs(subgraphs);             
-    FactorCommonSubproduct(subgraphs, m_Derivatives);          
+    }
+    FactorSubgraphs(subgraphs);
+    FactorCommonSubproduct(subgraphs, m_Derivatives);
 }
 
 bool DerivativeGraph::GetFactorSubgraph(std::vector<DerivativeSubgraph> &subgraphs,
@@ -368,16 +375,19 @@ void DerivativeGraph::FactorSubgraphs(std::vector<DerivativeSubgraph>& subgraphs
     DervGraphVertex vert0, vert1;
     std::vector<int> subgraphIdList;
     std::vector<bool> isDomList;
-    while(GetFactorSubgraph(subgraphs, vert0, vert1, subgraphIdList, isDomList)) {      
+    int it = 0;
+    while(GetFactorSubgraph(subgraphs, vert0, vert1, subgraphIdList, isDomList)) {
+        it++;
         for (int i = 0; i < (int)subgraphIdList.size(); i++) {
             int subgraphId = subgraphIdList[i];
             bool isDom = isDomList[i];
             DerivativeSubgraph &dSubgraph = subgraphs[subgraphId];
             DervGraph &subgraph = dSubgraph.subgraph;
-            std::vector<int> &domsArray = isDom ? dSubgraph.postDoms : dSubgraph.doms;        
+            std::vector<int> &domsArray = isDom ? dSubgraph.postDoms : dSubgraph.doms;
             std::set<std::pair<int, int> > edges;
-            auto factorExpr = FactorExpr(subgraph, vert0, vert1, edges).second;        
-            for(auto edge : edges) {            
+            std::unordered_map<DervGraphVertex, FactorExprRet> visited;
+            auto factorExpr = FactorExpr(subgraph, vert0, vert1, edges, visited).second;
+            for(auto edge : edges) {
                 DervGraphVertex v = isDom ? boost::vertex(edge.second, subgraph) : boost::vertex(edge.first, subgraph);
                 auto targetVert = isDom ? vert1 : vert0;
                 bool domTest = v == targetVert || (int)v == domsArray[v];
@@ -392,7 +402,7 @@ void DerivativeGraph::FactorSubgraphs(std::vector<DerivativeSubgraph>& subgraphs
                 if(domTest) {                
                     boost::remove_edge(edge.first, edge.second, subgraph);                
                 }
-            }                
+            }
             boost::add_edge(vert0, vert1, factorExpr, subgraph);            
         }
     }

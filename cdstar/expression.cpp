@@ -14,6 +14,9 @@ struct ExprHasher {
 struct ExprComparator {
     bool operator()(const std::shared_ptr<Expression> &expr0,
                     const std::shared_ptr<Expression> &expr1) const {
+        if (expr0 == expr1) {
+            return true;
+        }
         return expr0->Equal(expr1);
     }
 };
