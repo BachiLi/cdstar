@@ -38,7 +38,8 @@ public:
         m_ExprMasks.push(std::unordered_set<const Expression*>());
         m_LeftCondSubtrees.push(std::unordered_set<const Expression*>());
     }
-    void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft);
+    void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft, 
+                     std::unordered_set<const Expression*> &dfsSet);
     bool IsMasked(const Expression *expr) const {
         if (m_ExprMasks.size() == 0) return false;
         return m_ExprMasks.top().find(expr) != m_ExprMasks.top().end();
@@ -84,6 +85,7 @@ enum ExpressionType {
     ET_SQRT,
     ET_ASIN,
     ET_ACOS,
+    ET_LOG,
     ET_ADD,
     ET_MULTIPLY,
     ET_BOOLEAN,
@@ -515,6 +517,24 @@ protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
+class Log : public UnaryAssignment {
+public:
+    Log(const std::shared_ptr<Expression> &expr) :
+            UnaryAssignment(expr) {
+        m_Hash = ComputeHash();
+    }
+    ExpressionType Type() const {return ET_LOG;}
+    void Print() const;
+    std::vector<std::shared_ptr<Expression>> Dervs() const;
+    size_t ComputeHash() const {
+        std::size_t hash = std::hash<int>()(ET_LOG);
+        hash_combine(hash, m_Expr->GetHash());
+        return hash;
+    }
+protected:    
+    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
+};
+
 class BinaryAssignment : public Expression {
 public:
     BinaryAssignment(const std::shared_ptr<Expression> expr0,
@@ -779,6 +799,10 @@ inline std::shared_ptr<Expression> asin(const std::shared_ptr<Expression> expr) 
 
 inline std::shared_ptr<Expression> acos(const std::shared_ptr<Expression> expr) {
     return CacheExpression(std::make_shared<ACos>(expr));
+}
+
+inline std::shared_ptr<Expression> log(const std::shared_ptr<Expression> expr) {
+    return CacheExpression(std::make_shared<Log>(expr));
 }
 
 inline std::shared_ptr<Expression> sqrt(const std::shared_ptr<Expression> expr) {

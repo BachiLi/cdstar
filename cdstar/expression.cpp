@@ -69,10 +69,12 @@ int AssignmentMap::GetIndex(const Expression *expr) const {
 }
 
 void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, 
-                                bool inSubtree, bool isLeft) {
-    if (IsEmitted(expr) || !expr->UseTmpVar()) {
-        return;        
+                                bool inSubtree, bool isLeft,
+                                std::unordered_set<const Expression*> &dfsSet) {
+    if (IsEmitted(expr) || !expr->UseTmpVar() || dfsSet.find(expr) != dfsSet.end()) {
+        return;
     }
+    dfsSet.insert(expr);
     bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
     if ((inSubtree && !out) || (!inSubtree && out)) {  
         m_ExprMasks.top().insert(expr);
@@ -98,7 +100,7 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
         rootId = -1;
     }
     for (auto child : expr->Children()) {
-        MaskSubtree(child.get(), rootId, inSubtree, isLeft);
+        MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
     }
 }
 
@@ -414,6 +416,11 @@ void Sqrt::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sqrt(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> Sqrt::Dervs() const {
+    std::shared_ptr<Sqrt> thisPtr = std::const_pointer_cast<Sqrt>(shared_from_this());
+    return {Inv(2.0 * thisPtr)};
+}
+
 void ASin::Print() const {
     std::cerr << "asin(";
     m_Expr->Print();
@@ -442,9 +449,18 @@ std::vector<std::shared_ptr<Expression>> ACos::Dervs() const {
     return {-Inv(sqrt(1.0 - m_Expr * m_Expr))};
 }
 
-std::vector<std::shared_ptr<Expression>> Sqrt::Dervs() const {
-    std::shared_ptr<Sqrt> thisPtr = std::const_pointer_cast<Sqrt>(shared_from_this());
-    return {Inv(2.0 * thisPtr)};
+void Log::Print() const {
+    std::cerr << "log(";
+    m_Expr->Print();
+    std::cerr << ")";
+}
+
+void Log::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
+    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = log(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
+}
+
+std::vector<std::shared_ptr<Expression>> Log::Dervs() const {    
+    return {Inv(m_Expr)};
 }
 
 std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
@@ -598,12 +614,15 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     for (auto expr : condExprs) {
         id = std::max(id, assignMap.GetIndex(expr));
     }
+    std::unordered_set<const Expression*> dfsSet;
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true);        
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true, dfsSet);        
     }
+    dfsSet.clear();
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true, false);
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true, false, dfsSet);
     }
+    dfsSet.clear();
     for (auto expr : condExprs) {
         expr->m_TrueExpr->Emit(assignMap, os);
         expr->m_FalseExpr->Emit(assignMap, os);
@@ -613,11 +632,13 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.IncTab();
     assignMap.PushMask();
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false, true);
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false, true, dfsSet);
     }
+    dfsSet.clear();
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false, false);
+        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false, false, dfsSet);
     }
+    dfsSet.clear();
     for (auto expr : condExprs) {
         expr->m_TrueExpr->Emit(assignMap, os);
     }
