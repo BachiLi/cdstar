@@ -50,10 +50,11 @@ void AssignmentMap::Register(const Expression *expr) {
                 }
             }
         }
-    }
-    int id = m_ExprMap[expr];
-    for (auto child : expr->Children()) {
-        m_MaxParentId[child.get()] = std::max(m_MaxParentId[child.get()], id);
+        
+        int id = m_ExprMap[expr];
+        for (auto child : expr->Children()) {
+            m_MaxParentId[child.get()] = std::max(m_MaxParentId[child.get()], id);
+        }
     }
 }
 
@@ -232,6 +233,9 @@ void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
 void Expression::Register(AssignmentMap &assignMap) const {
     auto children = Children();
     if (children.size() == 0) {
+        return;
+    }
+    if (assignMap.IsRegistered(this)) {
         return;
     }
     for (auto child : children) {

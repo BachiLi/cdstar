@@ -23,6 +23,9 @@ class AssignmentMap {
 public:
     AssignmentMap() : m_AssignCount(0), m_BooleanCount(0), m_TabNum(1) {}
     void Register(const Expression *expr);
+    bool IsRegistered(const Expression *expr) const {
+        return m_ExprMap.find(expr) != m_ExprMap.end();
+    }
     void RegisterBoolean(const Expression *expr);
     int GetIndex(const Expression *expr) const;
     int GetAssignCount() const {
