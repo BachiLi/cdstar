@@ -31,14 +31,10 @@ public:
     int GetAssignCount() const {
         return m_AssignCount;
     }
-    bool IsEmitted(const Expression *expr) const {
-        return m_EmittedSet.find(expr) != m_EmittedSet.end();
-    }
-    void SetEmitted(const Expression *expr) {
-        m_EmittedSet.insert(expr);
-    }
+    bool IsEmitted(const Expression *expr) const;
+    void SetEmitted(const Expression *expr);
     void PushMask() {
-        m_ExprMasks.push(std::unordered_set<const Expression*>());
+        m_ExprMasks.push(std::unordered_map<const Expression*, bool>());
         m_LeftCondSubtrees.push(std::unordered_set<const Expression*>());
     }
     void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft, 
@@ -47,6 +43,8 @@ public:
         if (m_ExprMasks.size() == 0) return false;
         return m_ExprMasks.top().find(expr) != m_ExprMasks.top().end();
     }
+    bool IsMaskedAndTraversed(const Expression *expr) const;
+    void SetMaskTraversed(const Expression *expr);
     void PopMask() {
         m_LeftCondSubtrees.pop();
         m_ExprMasks.pop();
@@ -68,7 +66,7 @@ private:
     std::unordered_set<const Expression*> m_EmittedSet;
     std::unordered_multimap<const Boolean*, const CondExpr*> m_CondMap;
     std::set<std::pair<const CondExpr*, const CondExpr*>> m_CondPath;
-    std::stack<std::unordered_set<const Expression*>> m_ExprMasks;
+    std::stack<std::unordered_map<const Expression*, bool>> m_ExprMasks;
     std::stack<std::unordered_set<const Expression*>> m_LeftCondSubtrees;
     int m_AssignCount;
     int m_BooleanCount;
@@ -961,6 +959,8 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &input,
                   const std::vector<std::shared_ptr<NamedAssignment>> &output,
                   const std::string &name,
                   std::ostream &os);
+
+bool DetectCycle(const std::shared_ptr<Expression> expr);
 
 } //namespace cdstar
 

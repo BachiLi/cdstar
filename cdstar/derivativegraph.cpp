@@ -170,6 +170,7 @@ FactorExprRet FactorExpr(const DervGraph                &graph,
 }
 
 DerivativeGraph::DerivativeGraph(const std::vector<ExprPtrPair>& dervExprs) {
+    std::cerr << "Start DerivativeGraph" << std::endl;
     std::vector<std::pair<DervGraphVertex, DervGraphVertex>> srcTgtPairs(dervExprs.size());
     for(size_t i = 0; i < dervExprs.size(); i++) {
         srcTgtPairs[i].first = BuildGraph(dervExprs[i].first);

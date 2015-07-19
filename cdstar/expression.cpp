@@ -23,6 +23,33 @@ struct ExprComparator {
 
 std::unordered_set<std::shared_ptr<Expression>, ExprHasher, ExprComparator> g_ExprCache;
 
+bool AssignmentMap::IsEmitted(const Expression *expr) const {
+    return m_EmittedSet.find(expr) != m_EmittedSet.end();
+}
+
+void AssignmentMap::SetEmitted(const Expression *expr) {
+    m_EmittedSet.insert(expr);
+}
+
+bool AssignmentMap::IsMaskedAndTraversed(const Expression *expr) const {
+    if (m_ExprMasks.size() == 0) return false;
+    auto it = m_ExprMasks.top().find(expr);
+    if (it == m_ExprMasks.top().end()) {
+        return false;
+    }
+    return it->second;
+}
+
+void AssignmentMap::SetMaskTraversed(const Expression *expr) {
+    if (m_ExprMasks.size() == 0) {
+        return;
+    }
+    auto it = m_ExprMasks.top().find(expr);
+    if (it != m_ExprMasks.top().end()) {
+        it->second = true;
+    }
+}
+
 void AssignmentMap::Register(const Expression *expr) {
     if (m_ExprMap.find(expr) == m_ExprMap.end()) {
         m_ExprMap[expr] = m_AssignCount++;
@@ -81,7 +108,7 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
     dfsSet.insert(expr);
     bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
     if ((inSubtree && !out) || (!inSubtree && out)) {  
-        m_ExprMasks.top().insert(expr);
+        m_ExprMasks.top().insert({expr, false});
     }
     
     if (isLeft) {
@@ -95,7 +122,7 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
             } else {
                 // Exception: the intersection of the left and right trees should
                 //            also be masked                
-                m_ExprMasks.top().insert(expr);
+                m_ExprMasks.top().insert({expr, false});
             }
         }
     }
@@ -214,7 +241,7 @@ std::string StructArgument::GetDeclaration() const {
 }
 
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this)) {
+    if (assignMap.IsEmitted(this) || assignMap.IsMaskedAndTraversed(this)) {
         return;
     }
     auto children = Children();
@@ -227,6 +254,8 @@ void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     if (!assignMap.IsMasked(this)) {
         EmitSelf(assignMap, os);
         assignMap.SetEmitted(this);
+    } else {
+        assignMap.SetMaskTraversed(this);
     }
 }
 
@@ -285,11 +314,11 @@ std::string Constant::GetEmitName(const AssignmentMap &assignMap) const {
 }
 
 std::vector<std::shared_ptr<Expression>> Constant::Children() const {
-    return std::vector<std::shared_ptr<Expression>>();
+    return {};
 }
 
 std::vector<std::shared_ptr<Expression>> Constant::Dervs() const {
-    return std::vector<std::shared_ptr<Expression>>();
+    return {};
 }
 
 void IntegerConstant::Print() const {    
@@ -304,11 +333,11 @@ std::string IntegerConstant::GetEmitName(const AssignmentMap &assignMap) const {
 }
 
 std::vector<std::shared_ptr<Expression>> IntegerConstant::Children() const {
-    return std::vector<std::shared_ptr<Expression>>();
+    return {};
 }
 
 std::vector<std::shared_ptr<Expression>> IntegerConstant::Dervs() const {
-    return std::vector<std::shared_ptr<Expression>>();
+    return {};
 }
 
 void NamedAssignment::Print() const {
@@ -475,10 +504,7 @@ std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const 
 }
 
 std::vector<std::shared_ptr<Expression>> BinaryAssignment::Children() const {
-    std::vector<std::shared_ptr<Expression>> ret;
-    ret.push_back(m_Expr0);
-    ret.push_back(m_Expr1);
-    return ret;
+    return {m_Expr0, m_Expr1};
 }
 
 void Add::Print() const {
@@ -711,6 +737,7 @@ std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
             return children0[1] * (children0[0] + children1[0]);
         }
     }
+
     if (expr0->Type() == ET_CONDEXPR && expr1->Type() == ET_CONDEXPR) {
         auto children0 = expr0->Children();
         auto children1 = expr1->Children();
@@ -719,6 +746,7 @@ std::shared_ptr<Expression> operator+(const std::shared_ptr<Expression> expr0,
                 children0[1] + children1[1], children0[2] + children1[2]);
         }
     }
+
     if (expr0->Type() == ET_CONDEXPR) {
         auto children = expr0->Children();
         if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
@@ -809,6 +837,7 @@ std::shared_ptr<Expression> operator*(const std::shared_ptr<Expression> expr0,
     if (expr1->Type() == ET_CONSTANT) {
         return expr0 * expr1->GetConstant();
     }
+
     if (expr0->Type() == ET_CONDEXPR) {
         auto children = expr0->Children();
         if (children[1]->Type() == ET_CONSTANT && children[1]->GetConstant() == 0.0) {
@@ -872,6 +901,7 @@ std::shared_ptr<Expression> operator*(const double v0,
             return (v0 * children[1]->GetConstant()) * children[0];
         }
     }
+
     if (expr1->Type() == ET_CONDEXPR) {
         auto children = expr1->Children();
         if (children[1]->Type() == ET_CONSTANT) {
@@ -887,6 +917,7 @@ std::shared_ptr<Expression> operator*(const double v0,
                           v0 * children[2]->GetConstant());
         }
     }
+
     auto c = std::make_shared<Constant>(v0);
     auto ret0 = std::make_shared<Multiply>(c, expr1);
     auto ret1 = std::make_shared<Multiply>(expr1, c);
@@ -993,6 +1024,7 @@ std::shared_ptr<Expression> CacheExpression(const std::shared_ptr<Expression> &e
             return expr0;
         }
     }
+
     return *it;
 }
 
@@ -1008,6 +1040,10 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
     AssignmentMap assignMap;
     for (auto expr : outputs) {
         expr->Register(assignMap);
+    }
+    
+    if (DetectCycle(outputs[0])) {
+        throw std::runtime_error("Cycle detected");
     }
 
     std::unordered_map<std::string, int> varMap;
@@ -1043,6 +1079,35 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
     }
     
     os << "}" << std::endl;
+}
+
+bool DetectCycle(const std::shared_ptr<Expression> expr, 
+                 std::unordered_set<const Expression*> &dfsSet,
+                 std::unordered_set<const Expression*> &recSet) {
+    if (dfsSet.find(expr.get()) == dfsSet.end()) {
+        dfsSet.insert(expr.get());
+        recSet.insert(expr.get());
+
+        for (auto child : expr->Children()) {
+            if (dfsSet.find(child.get()) != dfsSet.end()) {
+                continue;
+            }
+            bool ret = DetectCycle(child, dfsSet, recSet);
+            if (ret) {
+                return true;
+            }
+            if (recSet.find(child.get()) != recSet.end()) {
+                return true;
+            }
+        }
+    }
+    recSet.erase(expr.get());
+    return false;
+}
+
+bool DetectCycle(const std::shared_ptr<Expression> expr) {
+    std::unordered_set<const Expression*> dfsSet, recSet;
+    return DetectCycle(expr, dfsSet, recSet);
 }
 
 } //namespace cdstar
