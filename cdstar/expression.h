@@ -33,9 +33,10 @@ public:
     }
     bool IsEmitted(const Expression *expr) const;
     void SetEmitted(const Expression *expr);
-    void PushMask() {
+    void PushMask(const CondExpr *expr) {
         m_ExprMasks.push(std::unordered_map<const Expression*, bool>());
         m_LeftCondSubtrees.push(std::unordered_set<const Expression*>());
+        m_CondExprStack.push_back(expr);
     }
     void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft, 
                      std::unordered_set<const Expression*> &dfsSet);
@@ -46,6 +47,7 @@ public:
     bool IsMaskedAndTraversed(const Expression *expr) const;
     void SetMaskTraversed(const Expression *expr);
     void PopMask() {
+        m_CondExprStack.pop_back();
         m_LeftCondSubtrees.pop();
         m_ExprMasks.pop();
     }
@@ -68,6 +70,7 @@ private:
     std::set<std::pair<const CondExpr*, const CondExpr*>> m_CondPath;
     std::stack<std::unordered_map<const Expression*, bool>> m_ExprMasks;
     std::stack<std::unordered_set<const Expression*>> m_LeftCondSubtrees;
+    std::vector<const CondExpr*> m_CondExprStack;
     int m_AssignCount;
     int m_BooleanCount;
     int m_TabNum;
