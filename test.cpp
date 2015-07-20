@@ -733,6 +733,90 @@ void TestIfElseRational() {
     }
 }
 
+void TestIfElseCycle() {
+    // y0 = {x^2 + 2x + 3    if x > 0   
+    //       4*x^2 + 5x + 6  otherwise}
+    // z  = {5 * y0          if t > 0
+    //       x + y0          otherwise}
+    // y1 = {z * z           if x > 0
+    //       z + z           otherwise}
+    // z depends on y0, y1 depends on z
+    // y1 must NOT merge with y0
+    ClearExpressionCache();
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto tArg = std::make_shared<DoubleArgument>("t");
+    auto x = xArg->GetExpr();
+    auto t = tArg->GetExpr();
+    auto xSq = x * x;
+    auto y0 = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
+                                 4.0 * xSq + 5.0 * x + 6.0);
+    auto z  = IfElse(Gt(t, 0.0), 5.0 * y0, x + y0);
+    auto y1 = std::make_shared<NamedAssignment>("y1", 0, IfElse(Gt(x, 0.0), z * z, z + z));
+    std::vector<std::shared_ptr<Argument>> input = {xArg, tArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y1};
+    
+    Library lib("func_ifelse_cycle");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double, const double, double *);
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());
+
+    {
+        double x = 0.5, t = 0.5, y1[1];
+        f(x, t, y1);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double z  = t > 0.0 ? 5.0 * y0 : x + y0;
+        double ref[1] = {
+            x > 0.0 ? (z * z) : (z + z)
+        };
+        if (fabs(y1[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCycle Failed");
+        }
+    }
+    {
+        double x = -0.5, t = 0.5, y1[1];
+        f(x, t, y1);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double z  = t > 0.0 ? 5.0 * y0 : x + y0;
+        double ref[1] = {
+            x > 0.0 ? (z * z) : (z + z)
+        };
+        if (fabs(y1[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCycle Failed");
+        }
+    }
+    {
+        double x = 0.5, t = -0.5, y1[1];
+        f(x, t, y1);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double z  = t > 0.0 ? 5.0 * y0 : x + y0;
+        double ref[1] = {
+            x > 0.0 ? (z * z) : (z + z)
+        };
+        if (fabs(y1[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCycle Failed");
+        }
+    }
+    {
+        double x = -0.5, t = -0.5, y1[1];
+        f(x, t, y1);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double z  = t > 0.0 ? 5.0 * y0 : x + y0;
+        double ref[1] = {
+            x > 0.0 ? (z * z) : (z + z)
+        };
+        if (fabs(y1[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCycle Failed");
+        }
+    }
+}
+
 void TestStruct() {
     // struct Foo {
     //     double x;
@@ -889,6 +973,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElse Passed" << std::endl;
         TestIfElseRational();
         std::cerr << "TestIfElseRational Passed" << std::endl;
+        TestIfElseCycle();
+        std::cerr << "TestIfElseCycle Passed" << std::endl;
         TestStruct();
         std::cerr << "TestStruct Passed" << std::endl;
         TestUnion();

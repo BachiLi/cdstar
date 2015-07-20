@@ -372,7 +372,7 @@ std::vector<std::shared_ptr<Expression>> NamedAssignment::Dervs() const {
 }
 
 std::string UnaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> UnaryAssignment::Children() const {
@@ -510,7 +510,7 @@ std::vector<std::shared_ptr<Expression>> Log::Dervs() const {
 }
 
 std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> BinaryAssignment::Children() const {
@@ -712,7 +712,7 @@ void CondExpr::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> CondExpr::Children() const {
@@ -1082,7 +1082,7 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
         }
     }
     os << ") {" << std::endl;
-    os << "\tdouble t[" << assignMap.GetAssignCount() << "];" << std::endl;
+    os << "\tdouble _t[" << assignMap.GetAssignCount() << "];" << std::endl;
     
     for (auto expr : outputs) {
         expr->Emit(assignMap, os);
