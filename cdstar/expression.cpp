@@ -166,15 +166,17 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
                     break;
                 }
             }
-            for (auto expt : condExprs) {
-                if (inSubtree) {
-                    // Exception: the intersection of the left and right trees should
-                    //            be unmasked
-                    m_ExprMasks.top().erase(expr);
-                } else {
-                    // Exception: the intersection of the left and right trees should
-                    //            also be masked
-                    m_ExprMasks.top().insert({expr, false});
+            if (except) {
+                for (auto expr : condExprs) {
+                    if (inSubtree) {
+                        // Exception: the intersection of the left and right trees should
+                        //            be unmasked
+                        m_ExprMasks.top().erase(expr);
+                    } else {
+                        // Exception: the intersection of the left and right trees should
+                        //            also be masked
+                        m_ExprMasks.top().insert({expr, false});
+                    }
                 }
             }
         }
