@@ -817,6 +817,60 @@ void TestIfElseCycle() {
     }
 }
 
+void TestIfElseMerge() {
+    // y0 = {x^2 + 2x + 3    if x > 0   
+    //       4*x^2 + 5x + 6  otherwise}
+    // y1 = {x^2             if x > 0
+    //       2x              otherwise}
+    // y2 = {y0              if x > 0
+    //       y1              otherwise}
+    ClearExpressionCache();
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
+    auto xSq = x * x;
+    auto y0 = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
+                                 4.0 * xSq + 5.0 * x + 6.0);
+    auto y1 = IfElse(Gt(x, 0.0), xSq, 2.0 * x);
+    auto y2 = std::make_shared<NamedAssignment>("y2", 0, IfElse(Gt(x, 0.0), y0, y1));
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y2};
+    
+    Library lib("func_ifelse_merge");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double, double *);
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());
+
+    {
+        double x = 0.5, y2[1];
+        f(x, y2);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double ref[1] = {
+            x > 0.0 ? y0 : y1
+        };
+        if (fabs(y2[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMerge Failed");
+        }
+    }
+    {
+        double x = -0.5, y2[1];
+        f(x, y2);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double ref[1] = {
+            x > 0.0 ? y0 : y1
+        };
+        if (fabs(y2[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMerge Failed");
+        }
+    }
+}
+
 void TestStruct() {
     // struct Foo {
     //     double x;
@@ -975,6 +1029,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElseRational Passed" << std::endl;
         TestIfElseCycle();
         std::cerr << "TestIfElseCycle Passed" << std::endl;
+        TestIfElseMerge();
+        std::cerr << "TestIfElseMerge Passed" << std::endl;
         TestStruct();
         std::cerr << "TestStruct Passed" << std::endl;
         TestUnion();

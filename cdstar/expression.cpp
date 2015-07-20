@@ -105,33 +105,85 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
     if (IsEmitted(expr) || !expr->UseTmpVar() || dfsSet.find(expr) != dfsSet.end()) {
         return;
     }
-    dfsSet.insert(expr);
-    bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
-    if ((inSubtree && !out) || (!inSubtree && out)) {  
-        m_ExprMasks.top().insert({expr, false});
-    }
-    
-    if (isLeft) {
-        m_LeftCondSubtrees.top().insert(expr);
+    if (expr->Type() != ET_CONDEXPR) {
+        dfsSet.insert(expr);
+        
+        bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
+        if ((inSubtree && !out) || (!inSubtree && out)) {
+            m_ExprMasks.top().insert({expr, false});
+        }
+
+        if (isLeft) {
+            m_LeftCondSubtrees.top().insert(expr);
+        } else {
+            if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
+                if (inSubtree) {
+                    // Exception: the intersection of the left and right trees should
+                    //            be unmasked
+                    m_ExprMasks.top().erase(expr);
+                } else {
+                    // Exception: the intersection of the left and right trees should
+                    //            also be masked
+                    m_ExprMasks.top().insert({expr, false});
+                }
+            }
+        }
+
+        if (out) {
+            rootId = -1;
+        }
+        for (auto child : expr->Children()) {
+            MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
+        }
     } else {
-        if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
-            if (inSubtree) {
-                // Exception: the intersection of the left and right trees should
-                //            be unmasked
-                m_ExprMasks.top().erase(expr);
-            } else {
-                // Exception: the intersection of the left and right trees should
-                //            also be masked                
+        // Gather all mergeable expressions
+        const CondExpr* condExpr = dynamic_cast<const CondExpr*>(expr);
+        auto condExprs = MergeableCondExpr(condExpr);
+        for (auto expr : condExprs) {
+            dfsSet.insert(expr);
+        }
+        
+        int maxParentId = -1;
+        for (auto expr : condExprs) {
+            maxParentId = std::max(maxParentId, m_MaxParentId[expr]);
+        }
+        bool out = rootId < 0 || maxParentId > rootId;
+        if ((inSubtree && !out) || (!inSubtree && out)) {
+            for (auto expr : condExprs) {
                 m_ExprMasks.top().insert({expr, false});
             }
         }
-    }
-    
-    if (out) {
-        rootId = -1;
-    }
-    for (auto child : expr->Children()) {
-        MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
+
+        if (isLeft) {
+            for (auto expr : condExprs) {
+                m_LeftCondSubtrees.top().insert(expr);
+            }
+        } else {
+            for (auto expr : condExprs) {
+                if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
+                    if (inSubtree) {
+                        // Exception: the intersection of the left and right trees should
+                        //            be unmasked
+                        m_ExprMasks.top().erase(expr);
+                        break;
+                    } else {
+                        // Exception: the intersection of the left and right trees should
+                        //            also be masked
+                        m_ExprMasks.top().insert({expr, false});
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (out) {
+            rootId = -1;
+        }
+        for (auto expr : condExprs) {
+            for (auto child : expr->Children()) {
+                MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
+            }
+        }
     }
 }
 
@@ -144,10 +196,22 @@ std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *co
                     m_CondPath.find({srcExpr, condExpr}) == m_CondPath.end() &&
                         !IsEmitted(srcExpr) &&
                         !IsMaskedAndTraversed(srcExpr);
-        for (auto expr : m_CondExprStack) {
-            // If srcExpr connects to the ancestors then cond = false
-            if (m_CondPath.find({srcExpr, expr}) != m_CondPath.end()) {
-                cond = false;
+        if (cond && srcExpr != condExpr) {
+            for (auto expr : m_CondExprStack) {
+                // If srcExpr connects to the ancestors then cond = false
+                if (m_CondPath.find({srcExpr, expr}) != m_CondPath.end()) {
+                    cond = false;
+                }
+            }
+            if (cond) {
+                // Ensure that the new expr does not connect to the ones in the list
+                // and vice versa
+                for (auto expr : ret) {
+                    if (m_CondPath.find({srcExpr, expr}) != m_CondPath.end() ||
+                            m_CondPath.find({expr, srcExpr}) != m_CondPath.end()) {
+                        cond = false;
+                    }
+                }
             }
         }
         if (cond) {
@@ -649,7 +713,7 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     }
     // Gather condition expressions to merge
     auto condExprs = assignMap.MergeableCondExpr(this);
-    std::sort(condExprs.begin(), condExprs.end(), 
+    std::sort(condExprs.begin(), condExprs.end(),
         [&](const CondExpr *e0, const CondExpr *e1) {
             return assignMap.GetIndex(e0) < assignMap.GetIndex(e1);
         });
@@ -660,7 +724,7 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     }
     std::unordered_set<const Expression*> dfsSet;
     for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true, dfsSet);        
+        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true, dfsSet);
     }
     dfsSet.clear();
     for (auto expr : condExprs) {
