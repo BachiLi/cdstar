@@ -710,18 +710,27 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
         return;
     }
     m_Cond->Emit(assignMap, os);
-    if (assignMap.IsMasked(this)) {
-        m_TrueExpr->Emit(assignMap, os);
-        m_FalseExpr->Emit(assignMap, os);
-        assignMap.SetMaskTraversed(this);
-        return;
-    }
     // Gather condition expressions to merge
     auto condExprs = assignMap.MergeableCondExpr(this);
     std::sort(condExprs.begin(), condExprs.end(),
         [&](const CondExpr *e0, const CondExpr *e1) {
             return assignMap.GetIndex(e0) < assignMap.GetIndex(e1);
         });
+    bool isMasked = false;
+    for (auto expr : condExprs) {
+        if (assignMap.IsMasked(expr)) {
+            isMasked = true;
+            break;
+        }
+    }
+    if (isMasked) {
+        for (auto expr : condExprs) {
+            expr->m_TrueExpr->Emit(assignMap, os);
+            expr->m_FalseExpr->Emit(assignMap, os);
+            assignMap.SetMaskTraversed(expr);
+        }
+        return;
+    }
     assignMap.PushMask(this);
     int id = -1;
     for (auto expr : condExprs) {
@@ -1068,6 +1077,18 @@ std::shared_ptr<Boolean> Lt(const std::shared_ptr<Expression> expr0,
 std::shared_ptr<Expression> IfElse(const std::shared_ptr<Boolean> cond,
                                    const std::shared_ptr<Expression> trueExpr,
                                    const std::shared_ptr<Expression> falseExpr) {
+    if (trueExpr->Type() == ET_CONDEXPR) {
+        auto condExpr = std::dynamic_pointer_cast<CondExpr>(trueExpr);
+        if (condExpr->GetCond() == cond) {
+            return IfElse(cond, condExpr->Children()[1], falseExpr);
+        }
+    }
+    if (falseExpr->Type() == ET_CONDEXPR) {
+        auto condExpr = std::dynamic_pointer_cast<CondExpr>(falseExpr);
+        if (condExpr->GetCond() == cond) {
+            return IfElse(cond, trueExpr, condExpr->Children()[2]);
+        }
+    }
     auto ret0 = std::make_shared<CondExpr>(cond, trueExpr, falseExpr);
     auto ret1 = ret0->Swap();
     return CacheExpression(ret0, ret1);
