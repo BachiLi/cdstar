@@ -142,7 +142,7 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
         for (auto expr : condExprs) {
             dfsSet.insert(expr);
         }
-        
+
         int maxParentId = -1;
         for (auto expr : condExprs) {
             maxParentId = std::max(maxParentId, m_MaxParentId[expr]);
@@ -159,19 +159,22 @@ void AssignmentMap::MaskSubtree(const Expression *expr, int rootId,
                 m_LeftCondSubtrees.top().insert(expr);
             }
         } else {
+            bool except = false;
             for (auto expr : condExprs) {
                 if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
-                    if (inSubtree) {
-                        // Exception: the intersection of the left and right trees should
-                        //            be unmasked
-                        m_ExprMasks.top().erase(expr);
-                        break;
-                    } else {
-                        // Exception: the intersection of the left and right trees should
-                        //            also be masked
-                        m_ExprMasks.top().insert({expr, false});
-                        break;
-                    }
+                    except = true;
+                    break;
+                }
+            }
+            for (auto expt : condExprs) {
+                if (inSubtree) {
+                    // Exception: the intersection of the left and right trees should
+                    //            be unmasked
+                    m_ExprMasks.top().erase(expr);
+                } else {
+                    // Exception: the intersection of the left and right trees should
+                    //            also be masked
+                    m_ExprMasks.top().insert({expr, false});
                 }
             }
         }

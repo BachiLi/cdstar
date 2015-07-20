@@ -871,6 +871,70 @@ void TestIfElseMerge() {
     }
 }
 
+void TestIfElseMergeMore() {
+    // y0 = {x^2 + 2x + 3    if x > 0   
+    //       4*x^2 + 5x + 6  otherwise}
+    // y1 = {x^2             if x > 0
+    //       2x              otherwise}
+    // y2 = {y0              if x > 0
+    //       y1              otherwise}
+    // y3 = {x^2             if x > 0
+    //       y0              otherwise}
+    // y4 = {y2              if x > 0
+    //       y3              otherwise}
+    ClearExpressionCache();
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
+    auto xSq = x * x;
+    auto y0 = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
+                                 4.0 * xSq + 5.0 * x + 6.0);
+    auto y1 = IfElse(Gt(x, 0.0), xSq, 2.0 * x);
+    auto y2 = IfElse(Gt(x, 0.0), y0, y1);
+    auto y3 = IfElse(Gt(x, 0.0), xSq, y0);
+    auto y4 = std::make_shared<NamedAssignment>("y4", 0, IfElse(Gt(x, 0.0), y2, y3));
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y4};
+    
+    Library lib("func_ifelse_merge_more");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double, double *);
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());
+
+    {
+        double x = 0.5, y4[1];
+        f(x, y4);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double y2 = x > 0.0 ? y0 : y1;
+        double y3 = x > 0.0 ? x*x : y0;
+        double ref[1] = {
+            x > 0.0 ? y2 : y3
+        };
+        if (fabs(y4[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMergeMore Failed");
+        }
+    }
+    {
+        double x = -0.5, y4[1];
+        f(x, y4);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double y2 = x > 0.0 ? y0 : y1;
+        double y3 = x > 0.0 ? x*x : y0;
+        double ref[1] = {
+            x > 0.0 ? y2 : y3
+        };
+        if (fabs(y4[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMergeMore Failed");
+        }
+    }
+}
+
 void TestStruct() {
     // struct Foo {
     //     double x;
@@ -1031,6 +1095,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElseCycle Passed" << std::endl;
         TestIfElseMerge();
         std::cerr << "TestIfElseMerge Passed" << std::endl;
+        TestIfElseMergeMore();
+        std::cerr << "TestIfElseMergeMore Passed" << std::endl;
         TestStruct();
         std::cerr << "TestStruct Passed" << std::endl;
         TestUnion();
