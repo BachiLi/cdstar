@@ -1,5 +1,6 @@
 #include "cdstar/expression.h"
 #include "cdstar/library.h"
+#include "cdstar/argument.h"
 
 #include <iostream>
 #include <cmath>
@@ -733,7 +734,7 @@ void TestIfElseRational() {
     }
 }
 
-void TestIfElseCycle() {
+void TestIfElseDependent() {
     // y0 = {x^2 + 2x + 3    if x > 0   
     //       4*x^2 + 5x + 6  otherwise}
     // z  = {5 * y0          if t > 0
@@ -755,7 +756,7 @@ void TestIfElseCycle() {
     std::vector<std::shared_ptr<Argument>> input = {xArg, tArg};
     std::vector<std::shared_ptr<NamedAssignment>> output = {y1};
     
-    Library lib("func_ifelse_cycle");
+    Library lib("func_ifelse_dependent");
     std::string funcName = "f";
     lib.AddFunction(input, output, funcName);
     lib.CompileAndLoad();
@@ -773,7 +774,7 @@ void TestIfElseCycle() {
             x > 0.0 ? (z * z) : (z + z)
         };
         if (fabs(y1[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseCycle Failed");
+            throw std::runtime_error("TestIfElseDependent Failed");
         }
     }
     {
@@ -786,7 +787,7 @@ void TestIfElseCycle() {
             x > 0.0 ? (z * z) : (z + z)
         };
         if (fabs(y1[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseCycle Failed");
+            throw std::runtime_error("TestIfElseDependent Failed");
         }
     }
     {
@@ -799,7 +800,7 @@ void TestIfElseCycle() {
             x > 0.0 ? (z * z) : (z + z)
         };
         if (fabs(y1[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseCycle Failed");
+            throw std::runtime_error("TestIfElseDependent Failed");
         }
     }
     {
@@ -812,7 +813,56 @@ void TestIfElseCycle() {
             x > 0.0 ? (z * z) : (z + z)
         };
         if (fabs(y1[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseCycle Failed");
+            throw std::runtime_error("TestIfElseDependent Failed");
+        }
+    }
+}
+
+void TestIfElseCondDependent() {
+    // y = {x^2 + 2x + 3    if x > 0   
+    //      4*x^2 + 5x - 6  otherwise}
+    // z = {2y              if y > 0
+    //      3y              otherwise}
+    ClearExpressionCache();
+    auto xArg = std::make_shared<DoubleArgument>("x");
+    auto x = xArg->GetExpr();
+    auto xSq = x * x;
+    auto y = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
+                                4.0 * xSq + 5.0 * x - 6.0);
+    auto z = std::make_shared<NamedAssignment>("z", 0, IfElse(Gt(y, 0.0), 2.0 * y, 3.0 * y));
+    std::vector<std::shared_ptr<Argument>> input = {xArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {z};
+    
+    Library lib("func_ifelse_cond_dependent");
+    std::string funcName = "f";
+    lib.AddFunction(input, output, funcName);
+    lib.CompileAndLoad();
+    
+    typedef void (*func_t)(const double, double *);
+    func_t f = (func_t)lib.LoadFunction(funcName.c_str());
+
+    {
+        double x = 0.5, z[1];
+        f(x, z);
+        double y = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x - 6.0);
+        double ref[1] = {
+            y > 0.0 ? (2.0 * y) : (3.0 * y)
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCondDependent Failed");
+        }
+    }
+    {
+        double x = -0.5, z[1];
+        f(x, z);
+        double y = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x - 6.0);
+        double ref[1] = {
+            y > 0.0 ? (2.0 * y) : (3.0 * y)
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseCondDependent Failed");
         }
     }
 }
@@ -822,18 +872,17 @@ void TestIfElseMerge() {
     //       4*x^2 + 5x + 6  otherwise}
     // y1 = {x^2             if x > 0
     //       2x              otherwise}
-    // y2 = {y0              if x > 0
-    //       y1              otherwise}
     ClearExpressionCache();
     auto xArg = std::make_shared<DoubleArgument>("x");
     auto x = xArg->GetExpr();
     auto xSq = x * x;
-    auto y0 = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
-                                 4.0 * xSq + 5.0 * x + 6.0);
-    auto y1 = IfElse(Gt(x, 0.0), xSq, 2.0 * x);
-    auto y2 = std::make_shared<NamedAssignment>("y2", 0, IfElse(Gt(x, 0.0), y0, y1));
+    auto y0 = std::make_shared<NamedAssignment>("y", 0,
+        IfElse(Gt(x, 0.0), xSq + 2.0 * x + 3.0, 
+                           4.0 * xSq + 5.0 * x + 6.0));
+    auto y1 = std::make_shared<NamedAssignment>("y", 1,
+        IfElse(Gt(x, 0.0), xSq, 2.0 * x));
     std::vector<std::shared_ptr<Argument>> input = {xArg};
-    std::vector<std::shared_ptr<NamedAssignment>> output = {y2};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {y0, y1};
     
     Library lib("func_ifelse_merge");
     std::string funcName = "f";
@@ -844,92 +893,123 @@ void TestIfElseMerge() {
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());
 
     {
-        double x = 0.5, y2[1];
-        f(x, y2);
+        double x = 0.5, y[2];
+        f(x, y);
         double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
                              (4.0*x*x + 5.0*x + 6.0);
         double y1 = x > 0.0 ? x*x : 2.0*x;
-        double ref[1] = {
-            x > 0.0 ? y0 : y1
+        double ref[2] = {
+            y0,
+            y1
         };
-        if (fabs(y2[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseMerge Failed");
+        for (int i = 0; i < 2; i++) {
+            if (fabs(y[i] - ref[i]) > 1e-6) {
+                throw std::runtime_error("TestIfElseMerge Failed");
+            }
         }
     }
     {
-        double x = -0.5, y2[1];
-        f(x, y2);
+        double x = -0.5, y[2];
+        f(x, y);
         double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
                              (4.0*x*x + 5.0*x + 6.0);
         double y1 = x > 0.0 ? x*x : 2.0*x;
-        double ref[1] = {
-            x > 0.0 ? y0 : y1
+        double ref[2] = {
+            y0,
+            y1
         };
-        if (fabs(y2[0] - ref[0]) > 1e-6) {
-            throw std::runtime_error("TestIfElseMerge Failed");
+        for (int i = 0; i < 2; i++) {
+            if (fabs(y[i] - ref[i]) > 1e-6) {
+                throw std::runtime_error("TestIfElseMerge Failed");
+            }
         }
     }
 }
 
 void TestIfElseMergeMore() {
-    // y0 = {x^2 + 2x + 3    if x > 0   
+    // y0 = {x^2 + 2x + 3    if x > 0
     //       4*x^2 + 5x + 6  otherwise}
     // y1 = {x^2             if x > 0
     //       2x              otherwise}
-    // y2 = {y0              if x > 0
-    //       y1              otherwise}
-    // y3 = {x^2             if x > 0
-    //       y0              otherwise}
-    // y4 = {y2              if x > 0
-    //       y3              otherwise}
+    // y2 = {7*x             if x > 0
+    //       8*x             otherwise}
+    // z  = {y0 + y1         if t > 0
+    //       y2              otherwise}
     ClearExpressionCache();
     auto xArg = std::make_shared<DoubleArgument>("x");
+    auto tArg = std::make_shared<DoubleArgument>("t");
     auto x = xArg->GetExpr();
+    auto t = tArg->GetExpr();
     auto xSq = x * x;
     auto y0 = IfElse(Gt(x, 0.0),       xSq + 2.0 * x + 3.0, 
                                  4.0 * xSq + 5.0 * x + 6.0);
     auto y1 = IfElse(Gt(x, 0.0), xSq, 2.0 * x);
-    auto y2 = IfElse(Gt(x, 0.0), y0, y1);
-    auto y3 = IfElse(Gt(x, 0.0), xSq, y0);
-    auto y4 = std::make_shared<NamedAssignment>("y4", 0, IfElse(Gt(x, 0.0), y2, y3));
-    std::vector<std::shared_ptr<Argument>> input = {xArg};
-    std::vector<std::shared_ptr<NamedAssignment>> output = {y4};
+    auto y2 = IfElse(Gt(x, 0.0), 7.0 * x, 8.0 * x);
+    auto z  = std::make_shared<NamedAssignment>("z", 0, IfElse(Gt(t, 0.0), y0 + y1, y2));
+    std::vector<std::shared_ptr<Argument>> input = {xArg, tArg};
+    std::vector<std::shared_ptr<NamedAssignment>> output = {z};
     
     Library lib("func_ifelse_merge_more");
     std::string funcName = "f";
     lib.AddFunction(input, output, funcName);
     lib.CompileAndLoad();
     
-    typedef void (*func_t)(const double, double *);
+    typedef void (*func_t)(const double, const double, double *);
     func_t f = (func_t)lib.LoadFunction(funcName.c_str());
 
     {
-        double x = 0.5, y4[1];
-        f(x, y4);
+        double x = 0.5, t = 0.5, z[1];
+        f(x, t, z);
         double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
                              (4.0*x*x + 5.0*x + 6.0);
         double y1 = x > 0.0 ? x*x : 2.0*x;
-        double y2 = x > 0.0 ? y0 : y1;
-        double y3 = x > 0.0 ? x*x : y0;
+        double y2 = x > 0.0 ? 7.0*x : 8.0*x;
         double ref[1] = {
-            x > 0.0 ? y2 : y3
+            t > 0.0 ? y0 + y1 : y2
         };
-        if (fabs(y4[0] - ref[0]) > 1e-6) {
+        if (fabs(z[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElseMergeMore Failed");
         }
     }
     {
-        double x = -0.5, y4[1];
-        f(x, y4);
+        double x = 0.5, t = -0.5, z[1];
+        f(x, t, z);
         double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
                              (4.0*x*x + 5.0*x + 6.0);
         double y1 = x > 0.0 ? x*x : 2.0*x;
-        double y2 = x > 0.0 ? y0 : y1;
-        double y3 = x > 0.0 ? x*x : y0;
+        double y2 = x > 0.0 ? 7.0*x : 8.0*x;
         double ref[1] = {
-            x > 0.0 ? y2 : y3
+            t > 0.0 ? y0 + y1 : y2
         };
-        if (fabs(y4[0] - ref[0]) > 1e-6) {
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMergeMore Failed");
+        }
+    }
+    {
+        double x = -0.5, t = 0.5, z[1];
+        f(x, t, z);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double y2 = x > 0.0 ? 7.0*x : 8.0*x;
+        double ref[1] = {
+            t > 0.0 ? y0 + y1 : y2
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
+            throw std::runtime_error("TestIfElseMergeMore Failed");
+        }
+    }
+    {
+        double x = -0.5, t = -0.5, z[1];
+        f(x, t, z);
+        double y0 = x > 0.0 ? (x*x + 2.0*x + 3.0) : 
+                             (4.0*x*x + 5.0*x + 6.0);
+        double y1 = x > 0.0 ? x*x : 2.0*x;
+        double y2 = x > 0.0 ? 7.0*x : 8.0*x;
+        double ref[1] = {
+            t > 0.0 ? y0 + y1 : y2
+        };
+        if (fabs(z[0] - ref[0]) > 1e-6) {
             throw std::runtime_error("TestIfElseMergeMore Failed");
         }
     }
@@ -1091,8 +1171,10 @@ int main(int argc, char *argv[]) {
         std::cerr << "TestIfElse Passed" << std::endl;
         TestIfElseRational();
         std::cerr << "TestIfElseRational Passed" << std::endl;
-        TestIfElseCycle();
-        std::cerr << "TestIfElseCycle Passed" << std::endl;
+        TestIfElseDependent();
+        std::cerr << "TestIfElseDependent Passed" << std::endl;
+        TestIfElseCondDependent();
+        std::cerr << "TestIfElseCondDependent Passed" << std::endl;
         TestIfElseMerge();
         std::cerr << "TestIfElseMerge Passed" << std::endl;
         TestIfElseMergeMore();

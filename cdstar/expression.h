@@ -1,6 +1,8 @@
 #ifndef CDSTAR_EXPRESSION_H__
 #define CDSTAR_EXPRESSION_H__
 
+#include "cfg.h"
+
 #include <memory>
 #include <iostream>
 #include <string>
@@ -15,9 +17,32 @@ namespace cdstar {
 class Expression;
 class Boolean;
 class CondExpr;
+class Argument;
 
 typedef std::shared_ptr<Expression> ExprPtr;
 typedef std::pair<ExprPtr, ExprPtr> ExprPtrPair;
+
+enum ExpressionType {
+    ET_VARIABLE,
+    ET_CONSTANT,
+    ET_INTEGER_CONSTANT,
+    ET_NAMED_ASSIGNMENT,
+    ET_NEGATE,
+    ET_INVERSE,
+    ET_SIN,
+    ET_COS,
+    ET_TAN,
+    ET_SQRT,
+    ET_ASIN,
+    ET_ACOS,
+    ET_LOG,
+    ET_ADD,
+    ET_MULTIPLY,
+    ET_BOOLEAN,
+    ET_CONDEXPR
+};
+
+std::ostream& PrintTab(const int tabNum, std::ostream &os);
 
 class AssignmentMap {
 public:
@@ -59,6 +84,8 @@ public:
         return os;
     }
     std::vector<const CondExpr*> MergeableCondExpr(const CondExpr *condExpr) const;
+    
+    void BuildScope(const std::vector<const Expression*> &outputs);
 private:
     bool CondPath(const CondExpr *src, const CondExpr *tgt) const {
         return m_CondPath.find({src, tgt}) != m_CondPath.end();
@@ -76,151 +103,11 @@ private:
     int m_TabNum;
 };
 
-enum ExpressionType {
-    ET_VARIABLE,
-    ET_CONSTANT,
-    ET_INTEGER_CONSTANT,
-    ET_NAMED_ASSIGNMENT,
-    ET_NEGATE,
-    ET_INVERSE,
-    ET_SIN,
-    ET_COS,
-    ET_TAN,
-    ET_SQRT,
-    ET_ASIN,
-    ET_ACOS,
-    ET_LOG,
-    ET_ADD,
-    ET_MULTIPLY,
-    ET_BOOLEAN,
-    ET_CONDEXPR
-};
-
 template <typename T>
 inline void hash_combine(std::size_t &seed, const T &v) {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
-
-class StructType;
-
-class Argument {
-public:
-    Argument(const std::string &name) : m_Name(name) {}
-    virtual std::string GetDeclaration() const = 0;
-    virtual std::shared_ptr<Argument> SetParent(const std::string &parentName) const = 0;
-    std::string GetName() const {
-        return m_Name;
-    }
-    virtual std::shared_ptr<Argument> GetArg(const std::string &name, int index = 0) const {
-        return std::shared_ptr<Argument>();
-    }
-    virtual std::shared_ptr<Expression> GetExpr(int index = 0) const {
-        return std::shared_ptr<Expression>();
-    }
-    virtual std::shared_ptr<StructType> GetStructType() const {
-        return std::shared_ptr<StructType>();
-    }
-protected:
-    std::string m_Name;
-};
-
-class DoubleArgument : public Argument {
-public:
-    DoubleArgument(const std::string &name, int size = 1);
-    std::string GetDeclaration() const;
-    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
-        if (parentName == "") {
-            return std::make_shared<DoubleArgument>(m_Name, m_Exprs.size());
-        } else {
-            return std::make_shared<DoubleArgument>(parentName + "." + m_Name, m_Exprs.size());
-        }
-    }
-    std::shared_ptr<Expression> GetExpr(int index = 0) const;
-private:
-    std::vector<std::shared_ptr<Expression>> m_Exprs;
-};
-
-class IntegerArgument : public Argument {
-public:
-    IntegerArgument(const std::string &name, int size = 1);
-    std::string GetDeclaration() const;
-    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
-        if (parentName == "") {
-            return std::make_shared<IntegerArgument>(m_Name, m_Exprs.size());
-        } else {
-            return std::make_shared<IntegerArgument>(parentName + "." + m_Name, m_Exprs.size());
-        }
-    }
-    std::shared_ptr<Expression> GetExpr(int index = 0) const;
-private:
-    std::vector<std::shared_ptr<Expression>> m_Exprs;
-};
-
-class StructInst;
-
-class StructType {
-public:
-    StructType(const std::string &name,
-               const std::vector<std::shared_ptr<Argument>> &args,
-               bool isUnion = false);
-    std::string GetName() const {return m_Name;}
-    std::shared_ptr<StructInst> GenStructInst(const std::string &name) const;
-    void EmitForwardDeclaration(std::ostream &os) const;
-    std::vector<std::shared_ptr<Argument>> GetArgs() const {
-        return m_Args;
-    }
-private:
-    std::string m_Name;
-    std::vector<std::shared_ptr<Argument>> m_Args;
-    bool m_IsUnion;
-};
-
-class StructArgument;
-
-class StructInst {
-public:
-    StructInst(const std::string &name,
-               const std::vector<std::shared_ptr<Argument>> &args);
-    std::shared_ptr<Argument> GetArg(const std::string &argName) const {
-        auto it = m_Args.find(argName);
-        if (it == m_Args.end()) {
-            std::cerr << "argName:" << argName << std::endl;
-            throw std::runtime_error("Argument not found in StructInst");
-        }
-        return it->second;
-    }
-private:
-    std::unordered_map<std::string, std::shared_ptr<Argument>> m_Args;
-};
-
-class StructArgument : public Argument {
-public:
-    StructArgument(const std::string &name, 
-                   const StructType &structType,
-                   int size = 1,
-                   bool nested = false);
-    std::string GetDeclaration() const;
-    std::shared_ptr<Argument> SetParent(const std::string &parentName) const {
-        if (parentName == "") {
-            return std::make_shared<StructArgument>(
-                m_Name, m_StructType, m_StructInsts.size(), true);
-        } else {
-            return std::make_shared<StructArgument>(
-                parentName + "." + m_Name, m_StructType, m_StructInsts.size(), true);
-        }
-    }
-    std::shared_ptr<Argument> GetArg(const std::string &argName, int index = 0) const {
-        return m_StructInsts[index]->GetArg(argName);
-    }
-    std::shared_ptr<StructType> GetStructType() const {
-        return std::make_shared<StructType>(m_StructType);
-    }
-private:
-    StructType m_StructType;
-    std::vector<std::shared_ptr<StructInst>> m_StructInsts;
-    bool m_Nested;
-};
 
 class Expression {
 public:
@@ -230,6 +117,8 @@ public:
     virtual bool UseTmpVar() const {return true;}
     virtual void Emit(AssignmentMap &assignMap, std::ostream &os) const;
     virtual std::string GetEmitName(const AssignmentMap &assignMap) const = 0;
+    virtual void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const = 0;
+    virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const = 0;
     virtual std::vector<std::shared_ptr<Expression>> Children() const = 0;
     virtual std::vector<std::shared_ptr<Expression>> Dervs() const = 0;
     virtual int HasPartialConstant() const {return 0;}
@@ -251,6 +140,8 @@ public:
     ExpressionType Type() const {return ET_VARIABLE;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::string GetName() const {return m_Name;}
     int GetIndex() const {return m_Index;}
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -269,7 +160,7 @@ public:
 protected:
     void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 private:
-    std::string m_Name;  
+    std::string m_Name;
     int m_Index;
 };
 
@@ -282,6 +173,8 @@ public:
     ExpressionType Type() const {return ET_CONSTANT;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;   
     double GetConstant() const {return m_Value;}
@@ -313,6 +206,8 @@ public:
     ExpressionType Type() const {return ET_INTEGER_CONSTANT;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
@@ -342,6 +237,8 @@ public:
     ExpressionType Type() const {return ET_NAMED_ASSIGNMENT;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::string GetName() const {return m_Name;}
     int GetIndex() const {return m_Index;}    
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -371,6 +268,7 @@ public:
     UnaryAssignment(const std::shared_ptr<Expression> &expr) :
         m_Expr(expr) {}
     virtual std::string GetEmitName(const AssignmentMap &assignMap) const;
+    virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     virtual bool Equal(const std::shared_ptr<Expression> expr) const {
         if (this == expr.get()) return true;
@@ -390,6 +288,7 @@ public:
     }
     ExpressionType Type() const {return ET_NEGATE;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_NEGATE);
@@ -408,6 +307,7 @@ public:
     }
     ExpressionType Type() const {return ET_INVERSE;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_INVERSE);
@@ -426,6 +326,7 @@ public:
     }
     ExpressionType Type() const {return ET_SIN;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_SIN);
@@ -444,6 +345,7 @@ public:
     }
     ExpressionType Type() const {return ET_COS;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_COS);
@@ -462,6 +364,7 @@ public:
     }
     ExpressionType Type() const {return ET_TAN;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_TAN);
@@ -480,6 +383,7 @@ public:
     }
     ExpressionType Type() const {return ET_SQRT;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_SQRT);
@@ -498,6 +402,7 @@ public:
     }
     ExpressionType Type() const {return ET_ASIN;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;    
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_ASIN);
@@ -516,6 +421,7 @@ public:
     }
     ExpressionType Type() const {return ET_ACOS;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_ACOS);
@@ -534,6 +440,7 @@ public:
     }
     ExpressionType Type() const {return ET_LOG;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     size_t ComputeHash() const {
         std::size_t hash = std::hash<int>()(ET_LOG);
@@ -551,6 +458,7 @@ public:
         m_Expr0(expr0), m_Expr1(expr1) {
     }
     virtual std::string GetEmitName(const AssignmentMap &assignMap) const;
+    virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;  
     int HasPartialConstant() const {
         if (m_Expr0->Type() == ET_CONSTANT) {
@@ -574,6 +482,7 @@ public:
     }
     ExpressionType Type() const {return ET_ADD;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
         if (this == expr.get()) return true;
@@ -600,6 +509,7 @@ public:
     }
     ExpressionType Type() const {return ET_MULTIPLY;}
     void Print() const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;   
     bool Equal(const std::shared_ptr<Expression> expr) const {
         if (this == expr.get()) return true;
@@ -636,6 +546,8 @@ public:
     ExpressionType Type() const {return ET_BOOLEAN;}
     void Print() const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {
@@ -675,6 +587,8 @@ public:
     void Print() const;
     void Emit(AssignmentMap &assignMap, std::ostream &os) const;
     std::string GetEmitName(const AssignmentMap &assignMap) const;
+    void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
+    std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     std::vector<std::shared_ptr<Expression>> Dervs() const;
     bool Equal(const std::shared_ptr<Expression> expr) const {

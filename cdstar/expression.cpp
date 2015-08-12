@@ -1,5 +1,6 @@
 #include "expression.h"
 #include "derivativegraph.h"
+#include "argument.h"
 
 #include <iostream>
 
@@ -23,6 +24,12 @@ struct ExprComparator {
 
 std::unordered_set<std::shared_ptr<Expression>, ExprHasher, ExprComparator> g_ExprCache;
 
+std::ostream& PrintTab(const int tabNum, std::ostream &os) {
+    for (int i = 0; i < tabNum; i++)
+        os << "\t";
+    return os;
+}
+////////////////////////////////////////////////////////////////////////////
 bool AssignmentMap::IsEmitted(const Expression *expr) const {
     return m_EmittedSet.find(expr) != m_EmittedSet.end();
 }
@@ -77,7 +84,7 @@ void AssignmentMap::Register(const Expression *expr) {
                 }
             }
         }
-        
+
         int id = m_ExprMap[expr];
         for (auto child : expr->Children()) {
             m_MaxParentId[child.get()] = std::max(m_MaxParentId[child.get()], id);
@@ -225,100 +232,7 @@ std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *co
     }
     return ret;
 }
-
-DoubleArgument::DoubleArgument(const std::string &name, int size) :
-        Argument(name) {
-    for (int i = 0; i < size; i++) {
-        m_Exprs.push_back(std::make_shared<Variable>(name, size == 1 ? -1 : i));
-    }
-}
-
-std::string DoubleArgument::GetDeclaration() const {
-    if (m_Exprs.size() == 1) {
-        return "double " + m_Name;
-    } else {
-        return "double " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
-    }
-}
-
-std::shared_ptr<Expression> DoubleArgument::GetExpr(int index) const {
-    return m_Exprs[index];
-}
-
-IntegerArgument::IntegerArgument(const std::string &name, int size) :
-        Argument(name) {
-    for (int i = 0; i < size; i++) {
-        m_Exprs.push_back(std::make_shared<Variable>(name, size == 1 ? -1 : i));
-    }
-}
-
-std::string IntegerArgument::GetDeclaration() const {
-    if (m_Exprs.size() == 1) {
-        return "int " + m_Name;
-    } else {
-        return "int " + m_Name + "[" + std::to_string(m_Exprs.size()) + "]";
-    }
-}
-
-std::shared_ptr<Expression> IntegerArgument::GetExpr(int index) const {
-    return m_Exprs[index];
-}
-
-StructType::StructType(const std::string &name, 
-                       const std::vector<std::shared_ptr<Argument>> &args,
-                       bool isUnion) :
-        m_Name(name), m_IsUnion(isUnion) {
-    for (auto &arg : args) {
-        m_Args.push_back(arg->SetParent(""));
-    }
-}
-
-std::shared_ptr<StructInst> StructType::GenStructInst(const std::string &name) const {
-    return std::make_shared<StructInst>(name, m_Args);
-}
-
-void StructType::EmitForwardDeclaration(std::ostream &os) const {
-    if (!m_IsUnion) {
-        os << "typedef struct {" << std::endl;
-    } else {
-        os << "typedef union {" << std::endl;
-    }
-    for (auto &arg : m_Args) {
-        os << "\t" << arg->GetDeclaration() << ";" << std::endl;
-    }
-    os << "} " << m_Name << ";" << std::endl;
-}
-
-StructInst::StructInst(const std::string &name,
-                       const std::vector<std::shared_ptr<Argument>> &args) {
-    for (auto &arg : args) {
-        m_Args[arg->GetName()] = arg->SetParent(name);
-    }
-}
-
-StructArgument::StructArgument(const std::string &name, 
-                               const StructType &structType,
-                               int size,
-                               bool nested) :
-        Argument(name), m_StructType(structType), m_Nested(nested) {
-    for (int i = 0; i < size; i++) {
-        if (m_Nested && size == 1) {
-            m_StructInsts.push_back(m_StructType.GenStructInst(m_Name));
-        } else {
-            m_StructInsts.push_back(m_StructType.GenStructInst(
-                m_Name + "[" + std::to_string(i) + "]"));
-        }
-    }
-}
-
-std::string StructArgument::GetDeclaration() const {
-    if (m_Nested && m_StructInsts.size() == 1) {
-        return m_StructType.GetName() + " " + m_Name;
-    } else {
-        return m_StructType.GetName() + " " + m_Name + "[" + std::to_string(m_StructInsts.size()) + "]";
-    }
-}
-
+////////////////////////////////////////////////////////////////////////////
 void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     if (assignMap.IsEmitted(this) || assignMap.IsMaskedAndTraversed(this)) {
         return;
@@ -353,7 +267,7 @@ void Expression::Register(AssignmentMap &assignMap) const {
         assignMap.Register(this);
     }
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Variable::Print() const {
     if (m_Index >= 0) {
         std::cerr << m_Name << "[" << m_Index << "]";
@@ -366,6 +280,17 @@ void Variable::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 }
 
 std::string Variable::GetEmitName(const AssignmentMap &assignMap) const {
+    if (m_Index >= 0) {
+        return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");
+    } else {
+        return m_Name;
+    }
+}
+
+void Variable::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+}
+
+std::string Variable::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
     if (m_Index >= 0) {
         return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");
     } else {
@@ -392,6 +317,13 @@ std::string Constant::GetEmitName(const AssignmentMap &assignMap) const {
     return std::to_string(m_Value);    
 }
 
+void Constant::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+}
+
+std::string Constant::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::to_string(m_Value);
+}
+
 std::vector<std::shared_ptr<Expression>> Constant::Children() const {
     return {};
 }
@@ -399,7 +331,7 @@ std::vector<std::shared_ptr<Expression>> Constant::Children() const {
 std::vector<std::shared_ptr<Expression>> Constant::Dervs() const {
     return {};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void IntegerConstant::Print() const {    
     std::cerr << m_Value;
 }
@@ -411,6 +343,13 @@ std::string IntegerConstant::GetEmitName(const AssignmentMap &assignMap) const {
     return std::to_string(m_Value);    
 }
 
+void IntegerConstant::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+}
+
+std::string IntegerConstant::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::to_string(m_Value);
+}
+
 std::vector<std::shared_ptr<Expression>> IntegerConstant::Children() const {
     return {};
 }
@@ -418,7 +357,7 @@ std::vector<std::shared_ptr<Expression>> IntegerConstant::Children() const {
 std::vector<std::shared_ptr<Expression>> IntegerConstant::Dervs() const {
     return {};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void NamedAssignment::Print() const {
     std::cerr << m_Name << "[" << m_Index << "] = ";
     m_Expr->Print();
@@ -432,6 +371,14 @@ std::string NamedAssignment::GetEmitName(const AssignmentMap &assignMap) const {
     return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");    
 }
 
+void NamedAssignment::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = " << m_Expr->GetEmitName(exprMap) << ";" << std::endl;
+}
+
+std::string NamedAssignment::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");
+}
+
 std::vector<std::shared_ptr<Expression>> NamedAssignment::Children() const {
     return {m_Expr};
 }
@@ -439,15 +386,19 @@ std::vector<std::shared_ptr<Expression>> NamedAssignment::Children() const {
 std::vector<std::shared_ptr<Expression>> NamedAssignment::Dervs() const {
     return {std::make_shared<Constant>(1.0)};
 }
-
+////////////////////////////////////////////////////////////////////////////
 std::string UnaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+}
+
+std::string UnaryAssignment::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::string("_t[") + std::to_string(exprMap.at(this).index) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> UnaryAssignment::Children() const {
     return {m_Expr};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Negate::Print() const {
     std::cerr << "(-";
     m_Expr->Print();
@@ -458,10 +409,14 @@ void Negate::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = -" << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
+void Negate::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = -" << m_Expr->GetEmitName(exprMap) << ";" << std::endl;
+}
+
 std::vector<std::shared_ptr<Expression>> Negate::Dervs() const {
     return {std::make_shared<Constant>(-1.0)};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Inverse::Print() const {
     std::cerr << "(1.0 / ";
     m_Expr->Print();
@@ -472,12 +427,16 @@ void Inverse::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = 1.0 / " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
+void Inverse::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = 1.0 / " << m_Expr->GetEmitName(exprMap) << ";" << std::endl;
+}
+
 std::vector<std::shared_ptr<Expression>> Inverse::Dervs() const {
     // d(1/x)/dx = -1/x^2
     std::shared_ptr<Inverse> thisPtr = std::const_pointer_cast<Inverse>(shared_from_this());
     return {-(thisPtr * thisPtr)};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Sin::Print() const {
     std::cerr << "sin(";
     m_Expr->Print();
@@ -488,10 +447,14 @@ void Sin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Sin::Dervs() const {    
-    return {cos(m_Expr)};
+void Sin::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = sin(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> Sin::Dervs() const {
+    return {cos(m_Expr)};
+}
+////////////////////////////////////////////////////////////////////////////
 void Cos::Print() const {
     std::cerr << "cos(";
     m_Expr->Print();
@@ -502,10 +465,14 @@ void Cos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = cos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Cos::Dervs() const {    
-    return {-sin(m_Expr)};
+void Cos::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = cos(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> Cos::Dervs() const {
+    return {-sin(m_Expr)};
+}
+////////////////////////////////////////////////////////////////////////////
 void Tan::Print() const {
     std::cerr << "tan(";
     m_Expr->Print();
@@ -516,11 +483,15 @@ void Tan::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = tan(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
+void Tan::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = tan(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
+}
+
 std::vector<std::shared_ptr<Expression>> Tan::Dervs() const {
     auto c = cos(m_Expr);
     return {Inv(c * c)};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Sqrt::Print() const {
     std::cerr << "sqrt(";
     m_Expr->Print();
@@ -531,11 +502,15 @@ void Sqrt::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sqrt(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
+void Sqrt::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = sqrt(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
+}
+
 std::vector<std::shared_ptr<Expression>> Sqrt::Dervs() const {
     std::shared_ptr<Sqrt> thisPtr = std::const_pointer_cast<Sqrt>(shared_from_this());
     return {Inv(2.0 * thisPtr)};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void ASin::Print() const {
     std::cerr << "asin(";
     m_Expr->Print();
@@ -546,10 +521,14 @@ void ASin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = asin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> ASin::Dervs() const {    
-    return {Inv(sqrt(1.0 - m_Expr * m_Expr))};
+void ASin::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = asin(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> ASin::Dervs() const {
+    return {Inv(sqrt(1.0 - m_Expr * m_Expr))};
+}
+////////////////////////////////////////////////////////////////////////////
 void ACos::Print() const {
     std::cerr << "acos(";
     m_Expr->Print();
@@ -560,10 +539,14 @@ void ACos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = acos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> ACos::Dervs() const {    
-    return {-Inv(sqrt(1.0 - m_Expr * m_Expr))};
+void ACos::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = acos(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> ACos::Dervs() const {
+    return {-Inv(sqrt(1.0 - m_Expr * m_Expr))};
+}
+////////////////////////////////////////////////////////////////////////////
 void Log::Print() const {
     std::cerr << "log(";
     m_Expr->Print();
@@ -574,18 +557,26 @@ void Log::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
     assignMap.PrintTab(os) << GetEmitName(assignMap) << " = log(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Log::Dervs() const {    
-    return {Inv(m_Expr)};
+void Log::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = log(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
 
+std::vector<std::shared_ptr<Expression>> Log::Dervs() const {
+    return {Inv(m_Expr)};
+}
+////////////////////////////////////////////////////////////////////////////
 std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+}
+
+std::string BinaryAssignment::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::string("_t[") + std::to_string(exprMap.at(this).index) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> BinaryAssignment::Children() const {
     return {m_Expr0, m_Expr1};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Add::Print() const {
     std::cerr << "(";
     m_Expr0->Print();
@@ -600,11 +591,17 @@ void Add::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
         m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
-std::vector<std::shared_ptr<Expression>> Add::Dervs() const {    
+void Add::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = " << 
+        m_Expr0->GetEmitName(exprMap) << " + " <<
+        m_Expr1->GetEmitName(exprMap) << ";" << std::endl;
+}
+
+std::vector<std::shared_ptr<Expression>> Add::Dervs() const {
     auto c = std::make_shared<Constant>(1.0);
     return {c, c};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void Multiply::Print() const {
     m_Expr0->Print();
     std::cerr << " * ";
@@ -617,10 +614,16 @@ void Multiply::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
         m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
+void Multiply::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << GetEmitName(exprMap) << " = " << 
+        m_Expr0->GetEmitName(exprMap) << " * " <<
+        m_Expr1->GetEmitName(exprMap) << ";" << std::endl;
+}
+
 std::vector<std::shared_ptr<Expression>> Multiply::Dervs() const {
     return {m_Expr1, m_Expr0};
 }    
-
+////////////////////////////////////////////////////////////////////////////
 std::string Boolean::OpToString() const {
     switch(m_Op) {
         case GREATER:
@@ -686,6 +689,15 @@ std::string Boolean::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("b") + std::to_string(assignMap.GetIndex(this));
 }
 
+void Boolean::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    os << "int " << GetEmitName(exprMap) << " = " <<
+        m_Expr0->GetEmitName(exprMap) << OpToString() << m_Expr1->GetEmitName(exprMap) << ";" << std::endl;
+}
+
+std::string Boolean::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::string("b") + std::to_string(exprMap.at(this).index);
+}
+
 std::vector<std::shared_ptr<Expression>> Boolean::Children() const {
     return {m_Expr0, m_Expr1};
 }
@@ -694,7 +706,7 @@ std::vector<std::shared_ptr<Expression>> Boolean::Dervs() const {
     auto zero = std::make_shared<Constant>(0.0);
     return {zero, zero};
 }
-
+////////////////////////////////////////////////////////////////////////////
 void CondExpr::Print() const {
     std::cerr << "(";
     m_Cond->Print();
@@ -709,7 +721,7 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
     if (assignMap.IsEmitted(this) || assignMap.IsMaskedAndTraversed(this)) {
         return;
     }
-    m_Cond->Emit(assignMap, os);
+    std::dynamic_pointer_cast<Expression>(m_Cond)->Emit(assignMap, os);
     // Gather condition expressions to merge
     auto condExprs = assignMap.MergeableCondExpr(this);
     std::sort(condExprs.begin(), condExprs.end(),
@@ -769,7 +781,7 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
             expr->m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
     }
     assignMap.DecTab();
-    assignMap.PrintTab(os) << "} else {" << std::endl;
+    assignMap.PrintTab(os) << "} else {" << "//" << m_Cond->GetEmitName(assignMap) << std::endl;
     assignMap.IncTab();
     for (auto expr : condExprs) {
         expr->m_FalseExpr->Emit(assignMap, os);
@@ -780,7 +792,7 @@ void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
             expr->m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
     }
     assignMap.DecTab();
-    assignMap.PrintTab(os) << "}" << std::endl;
+    assignMap.PrintTab(os) << "}" << "//" << m_Cond->GetEmitName(assignMap) << std::endl;
     for (auto expr : condExprs) {
         assignMap.SetEmitted(expr);
     }
@@ -791,6 +803,18 @@ void CondExpr::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
 
 std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
     return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
+}
+
+void CondExpr::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
+    if (block->condId == 0) { // emit true
+        os << GetEmitName(exprMap) << " = " << m_TrueExpr->GetEmitName(exprMap) << ";" << std::endl;
+    } else { // emit false
+        os << GetEmitName(exprMap) << " = " << m_FalseExpr->GetEmitName(exprMap) << ";" << std::endl;
+    }
+}
+
+std::string CondExpr::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
+    return std::string("_t[") + std::to_string(exprMap.at(this).index) + std::string("]");
 }
 
 std::vector<std::shared_ptr<Expression>> CondExpr::Children() const {
@@ -1138,6 +1162,37 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
                   const std::vector<std::shared_ptr<NamedAssignment>> &outputs,
                   const std::string &name,
                   std::ostream &os) {
+    std::unordered_map<std::string, int> varMap;
+    for (auto &var : outputs) {
+        varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
+    }
+
+    os << "void " << name << "(";
+    std::unordered_set<std::string> varSet;
+    bool first = true;
+    for (auto &arg : inputs) {
+        if (!first) {
+            os << ", ";
+        }
+        first = false;
+        os << "const " << arg->GetDeclaration();
+    }
+    for (auto &var : outputs) {
+        if (varSet.find(var->GetName()) == varSet.end()) {
+            if (!first) {
+                os << ", ";
+            }
+            first = false;
+            os << "double " << var->GetName() << "[" << varMap[var->GetName()] << "]";
+            varSet.insert(var->GetName());
+        }
+    }
+    os << ") {" << std::endl;
+    std::shared_ptr<CFGBlock> block = BuildCFGBlock(outputs);
+    Optimize(block);
+    Emit(block, os);
+    os << "}" << std::endl;
+#if 0
     AssignmentMap assignMap;
     for (auto expr : outputs) {
         expr->Register(assignMap);
@@ -1179,6 +1234,7 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
     }
     
     os << "}" << std::endl;
+#endif
 }
 
 bool DetectCycle(const std::shared_ptr<Expression> expr, 
