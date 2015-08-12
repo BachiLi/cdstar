@@ -29,261 +29,13 @@ std::ostream& PrintTab(const int tabNum, std::ostream &os) {
         os << "\t";
     return os;
 }
-////////////////////////////////////////////////////////////////////////////
-bool AssignmentMap::IsEmitted(const Expression *expr) const {
-    return m_EmittedSet.find(expr) != m_EmittedSet.end();
-}
 
-void AssignmentMap::SetEmitted(const Expression *expr) {
-    m_EmittedSet.insert(expr);
-}
-
-bool AssignmentMap::IsMaskedAndTraversed(const Expression *expr) const {
-    if (m_ExprMasks.size() == 0) return false;
-    auto it = m_ExprMasks.top().find(expr);
-    if (it == m_ExprMasks.top().end()) {
-        return false;
-    }
-    return it->second;
-}
-
-void AssignmentMap::SetMaskTraversed(const Expression *expr) {
-    if (m_ExprMasks.size() == 0) {
-        return;
-    }
-    auto it = m_ExprMasks.top().find(expr);
-    if (it != m_ExprMasks.top().end()) {
-        it->second = true;
-    }
-}
-
-void AssignmentMap::Register(const Expression *expr) {
-    if (m_ExprMap.find(expr) == m_ExprMap.end()) {
-        m_ExprMap[expr] = m_AssignCount++;
-        m_MaxParentId[expr] = -1;
-
-        if (expr->Type() == ET_CONDEXPR) {
-            const CondExpr *_expr = dynamic_cast<const CondExpr*>(expr);
-            m_CondMap.insert({_expr->GetCond().get(), _expr});
-            std::stack<const Expression*> dfsStack;
-            std::unordered_set<const Expression*> dfsSet;
-            dfsStack.push(expr);
-            while (!dfsStack.empty()) {
-                const Expression *curExpr = dfsStack.top();
-                dfsStack.pop();
-                if (dfsSet.find(curExpr) != dfsSet.end()) {
-                    continue;
-                }
-                dfsSet.insert(curExpr);
-                if (curExpr != expr && curExpr->Type() == ET_CONDEXPR) {
-                    const CondExpr *_curExpr = dynamic_cast<const CondExpr*>(curExpr);
-                    m_CondPath.insert({_expr, _curExpr});
-                }
-                for (auto child : curExpr->Children()) {
-                    dfsStack.push(child.get());
-                }
-            }
-        }
-
-        int id = m_ExprMap[expr];
-        for (auto child : expr->Children()) {
-            m_MaxParentId[child.get()] = std::max(m_MaxParentId[child.get()], id);
-        }
-    }
-}
-
-void AssignmentMap::RegisterBoolean(const Expression *expr) {
-    if (m_ExprMap.find(expr) == m_ExprMap.end()) {
-        m_ExprMap[expr] = m_BooleanCount++;
-    }
-}
-
-int AssignmentMap::GetIndex(const Expression *expr) const {
-    auto it = m_ExprMap.find(expr);
-    if (it != m_ExprMap.end()) {
-        return it->second;
-    }
-    return -1;
-}
-
-void AssignmentMap::MaskSubtree(const Expression *expr, int rootId, 
-                                bool inSubtree, bool isLeft,
-                                std::unordered_set<const Expression*> &dfsSet) {
-    if (IsEmitted(expr) || !expr->UseTmpVar() || dfsSet.find(expr) != dfsSet.end()) {
-        return;
-    }
-    if (expr->Type() != ET_CONDEXPR) {
-        dfsSet.insert(expr);
-        
-        bool out = rootId < 0 || m_MaxParentId[expr] > rootId;
-        if ((inSubtree && !out) || (!inSubtree && out)) {
-            m_ExprMasks.top().insert({expr, false});
-        }
-
-        if (isLeft) {
-            m_LeftCondSubtrees.top().insert(expr);
-        } else {
-            if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
-                if (inSubtree) {
-                    // Exception: the intersection of the left and right trees should
-                    //            be unmasked
-                    m_ExprMasks.top().erase(expr);
-                } else {
-                    // Exception: the intersection of the left and right trees should
-                    //            also be masked
-                    m_ExprMasks.top().insert({expr, false});
-                }
-            }
-        }
-
-        if (out) {
-            rootId = -1;
-        }
-        for (auto child : expr->Children()) {
-            MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
-        }
-    } else {
-        // Gather all mergeable expressions
-        const CondExpr* condExpr = dynamic_cast<const CondExpr*>(expr);
-        auto condExprs = MergeableCondExpr(condExpr);
-        for (auto expr : condExprs) {
-            dfsSet.insert(expr);
-        }
-
-        int maxParentId = -1;
-        for (auto expr : condExprs) {
-            maxParentId = std::max(maxParentId, m_MaxParentId[expr]);
-        }
-        bool out = rootId < 0 || maxParentId > rootId;
-        if ((inSubtree && !out) || (!inSubtree && out)) {
-            for (auto expr : condExprs) {
-                m_ExprMasks.top().insert({expr, false});
-            }
-        }
-
-        if (isLeft) {
-            for (auto expr : condExprs) {
-                m_LeftCondSubtrees.top().insert(expr);
-            }
-        } else {
-            bool except = false;
-            for (auto expr : condExprs) {
-                if (m_LeftCondSubtrees.top().find(expr) != m_LeftCondSubtrees.top().end()) {
-                    except = true;
-                    break;
-                }
-            }
-            if (except) {
-                for (auto expr : condExprs) {
-                    if (inSubtree) {
-                        // Exception: the intersection of the left and right trees should
-                        //            be unmasked
-                        m_ExprMasks.top().erase(expr);
-                    } else {
-                        // Exception: the intersection of the left and right trees should
-                        //            also be masked
-                        m_ExprMasks.top().insert({expr, false});
-                    }
-                }
-            }
-        }
-
-        if (out) {
-            rootId = -1;
-        }
-        for (auto expr : condExprs) {
-            for (auto child : expr->Children()) {
-                MaskSubtree(child.get(), rootId, inSubtree, isLeft, dfsSet);
-            }
-        }
-    }
-}
-
-std::vector<const CondExpr*> AssignmentMap::MergeableCondExpr(const CondExpr *condExpr) const {
-    std::vector<const CondExpr*> ret;
-    auto ranges = m_CondMap.equal_range(condExpr->GetCond().get());
-    for (auto it = ranges.first; it != ranges.second; it++) {
-        const CondExpr *srcExpr = it->second;
-        bool cond = m_CondPath.find({condExpr, srcExpr}) == m_CondPath.end() &&
-                    m_CondPath.find({srcExpr, condExpr}) == m_CondPath.end() &&
-                        !IsEmitted(srcExpr) &&
-                        !IsMaskedAndTraversed(srcExpr);
-        if (cond && srcExpr != condExpr) {
-            for (auto expr : m_CondExprStack) {
-                // If srcExpr connects to the ancestors then cond = false
-                if (m_CondPath.find({srcExpr, expr}) != m_CondPath.end()) {
-                    cond = false;
-                }
-            }
-            if (cond) {
-                // Ensure that the new expr does not connect to the ones in the list
-                // and vice versa
-                for (auto expr : ret) {
-                    if (m_CondPath.find({srcExpr, expr}) != m_CondPath.end() ||
-                            m_CondPath.find({expr, srcExpr}) != m_CondPath.end()) {
-                        cond = false;
-                    }
-                }
-            }
-        }
-        if (cond) {
-            ret.push_back(srcExpr);
-        }
-    }
-    return ret;
-}
-////////////////////////////////////////////////////////////////////////////
-void Expression::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this) || assignMap.IsMaskedAndTraversed(this)) {
-        return;
-    }
-    auto children = Children();
-    if (children.size() == 0) {
-        return;
-    }
-    for (auto child : children) {
-        child->Emit(assignMap, os);
-    }
-    if (!assignMap.IsMasked(this)) {
-        EmitSelf(assignMap, os);
-        assignMap.SetEmitted(this);
-    } else {
-        assignMap.SetMaskTraversed(this);
-    }
-}
-
-void Expression::Register(AssignmentMap &assignMap) const {
-    auto children = Children();
-    if (children.size() == 0) {
-        return;
-    }
-    if (assignMap.IsRegistered(this)) {
-        return;
-    }
-    for (auto child : children) {
-        child->Register(assignMap);
-    }
-    if (UseTmpVar()) {
-        assignMap.Register(this);
-    }
-}
-////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
 void Variable::Print() const {
     if (m_Index >= 0) {
         std::cerr << m_Name << "[" << m_Index << "]";
     } else {
         std::cerr << m_Name << std::endl;
-    }
-}
-
-void Variable::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-}
-
-std::string Variable::GetEmitName(const AssignmentMap &assignMap) const {
-    if (m_Index >= 0) {
-        return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");
-    } else {
-        return m_Name;
     }
 }
 
@@ -310,13 +62,6 @@ void Constant::Print() const {
     std::cerr << m_Value;
 }
 
-void Constant::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-}
-
-std::string Constant::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::to_string(m_Value);    
-}
-
 void Constant::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
 }
 
@@ -334,13 +79,6 @@ std::vector<std::shared_ptr<Expression>> Constant::Dervs() const {
 ////////////////////////////////////////////////////////////////////////////
 void IntegerConstant::Print() const {    
     std::cerr << m_Value;
-}
-
-void IntegerConstant::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-}
-
-std::string IntegerConstant::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::to_string(m_Value);    
 }
 
 void IntegerConstant::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -363,14 +101,6 @@ void NamedAssignment::Print() const {
     m_Expr->Print();
 }
 
-void NamedAssignment::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
-}
-
-std::string NamedAssignment::GetEmitName(const AssignmentMap &assignMap) const {
-    return m_Name + std::string("[") + std::to_string(m_Index) + std::string("]");    
-}
-
 void NamedAssignment::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = " << m_Expr->GetEmitName(exprMap) << ";" << std::endl;
 }
@@ -387,9 +117,6 @@ std::vector<std::shared_ptr<Expression>> NamedAssignment::Dervs() const {
     return {std::make_shared<Constant>(1.0)};
 }
 ////////////////////////////////////////////////////////////////////////////
-std::string UnaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
-}
 
 std::string UnaryAssignment::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
     return std::string("_t[") + std::to_string(exprMap.at(this).index) + std::string("]");
@@ -405,10 +132,6 @@ void Negate::Print() const {
     std::cerr << ")";
 }
 
-void Negate::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = -" << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
-}
-
 void Negate::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = -" << m_Expr->GetEmitName(exprMap) << ";" << std::endl;
 }
@@ -421,10 +144,6 @@ void Inverse::Print() const {
     std::cerr << "(1.0 / ";
     m_Expr->Print();
     std::cerr << ")";
-}
-
-void Inverse::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = 1.0 / " << m_Expr->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 void Inverse::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -443,10 +162,6 @@ void Sin::Print() const {
     std::cerr << ")";
 }
 
-void Sin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-}
-
 void Sin::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = sin(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
@@ -461,10 +176,6 @@ void Cos::Print() const {
     std::cerr << ")";
 }
 
-void Cos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = cos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-}
-
 void Cos::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = cos(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
@@ -477,10 +188,6 @@ void Tan::Print() const {
     std::cerr << "tan(";
     m_Expr->Print();
     std::cerr << ")";
-}
-
-void Tan::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = tan(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
 void Tan::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -498,10 +205,6 @@ void Sqrt::Print() const {
     std::cerr << ")";
 }
 
-void Sqrt::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = sqrt(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-}
-
 void Sqrt::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = sqrt(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
@@ -515,10 +218,6 @@ void ASin::Print() const {
     std::cerr << "asin(";
     m_Expr->Print();
     std::cerr << ")";
-}
-
-void ASin::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = asin(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
 }
 
 void ASin::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -535,10 +234,6 @@ void ACos::Print() const {
     std::cerr << ")";
 }
 
-void ACos::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = acos(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-}
-
 void ACos::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = acos(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
@@ -553,10 +248,6 @@ void Log::Print() const {
     std::cerr << ")";
 }
 
-void Log::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = log(" << m_Expr->GetEmitName(assignMap) << ");" << std::endl;
-}
-
 void Log::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << GetEmitName(exprMap) << " = log(" << m_Expr->GetEmitName(exprMap) << ");" << std::endl;
 }
@@ -565,10 +256,6 @@ std::vector<std::shared_ptr<Expression>> Log::Dervs() const {
     return {Inv(m_Expr)};
 }
 ////////////////////////////////////////////////////////////////////////////
-std::string BinaryAssignment::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
-}
-
 std::string BinaryAssignment::GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const {
     return std::string("_t[") + std::to_string(exprMap.at(this).index) + std::string("]");
 }
@@ -583,12 +270,6 @@ void Add::Print() const {
     std::cerr << " + ";
     m_Expr1->Print();
     std::cerr << ")";
-}
-
-void Add::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << 
-        m_Expr0->GetEmitName(assignMap) << " + " <<
-        m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 void Add::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -606,12 +287,6 @@ void Multiply::Print() const {
     m_Expr0->Print();
     std::cerr << " * ";
     m_Expr1->Print();
-}
-
-void Multiply::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << GetEmitName(assignMap) << " = " << 
-        m_Expr0->GetEmitName(assignMap) << " * " << 
-        m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
 }
 
 void Multiply::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -680,15 +355,6 @@ void Boolean::Print() const {
     std::cerr << ")";
 }
 
-void Boolean::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-    assignMap.PrintTab(os) << "int " << GetEmitName(assignMap) << " = " <<
-        m_Expr0->GetEmitName(assignMap) << OpToString() << m_Expr1->GetEmitName(assignMap) << ";" << std::endl;
-}
-
-std::string Boolean::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("b") + std::to_string(assignMap.GetIndex(this));
-}
-
 void Boolean::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
     os << "int " << GetEmitName(exprMap) << " = " <<
         m_Expr0->GetEmitName(exprMap) << OpToString() << m_Expr1->GetEmitName(exprMap) << ";" << std::endl;
@@ -715,94 +381,6 @@ void CondExpr::Print() const {
     std::cerr << " : ";
     m_FalseExpr->Print();
     std::cerr << ")";
-}
-
-void CondExpr::Emit(AssignmentMap &assignMap, std::ostream &os) const {
-    if (assignMap.IsEmitted(this) || assignMap.IsMaskedAndTraversed(this)) {
-        return;
-    }
-    std::dynamic_pointer_cast<Expression>(m_Cond)->Emit(assignMap, os);
-    // Gather condition expressions to merge
-    auto condExprs = assignMap.MergeableCondExpr(this);
-    std::sort(condExprs.begin(), condExprs.end(),
-        [&](const CondExpr *e0, const CondExpr *e1) {
-            return assignMap.GetIndex(e0) < assignMap.GetIndex(e1);
-        });
-    bool isMasked = false;
-    for (auto expr : condExprs) {
-        if (assignMap.IsMasked(expr)) {
-            isMasked = true;
-            break;
-        }
-    }
-    if (isMasked) {
-        for (auto expr : condExprs) {
-            expr->m_TrueExpr->Emit(assignMap, os);
-            expr->m_FalseExpr->Emit(assignMap, os);
-            assignMap.SetMaskTraversed(expr);
-        }
-        return;
-    }
-    assignMap.PushMask(this);
-    int id = -1;
-    for (auto expr : condExprs) {
-        id = std::max(id, assignMap.GetIndex(expr));
-    }
-    std::unordered_set<const Expression*> dfsSet;
-    for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, true, true, dfsSet);
-    }
-    dfsSet.clear();
-    for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, true, false, dfsSet);
-    }
-    dfsSet.clear();
-    for (auto expr : condExprs) {
-        expr->m_TrueExpr->Emit(assignMap, os);
-        expr->m_FalseExpr->Emit(assignMap, os);
-    }
-    assignMap.PopMask();
-    assignMap.PrintTab(os) << "if (" << m_Cond->GetEmitName(assignMap) << ") {" << std::endl;
-    assignMap.IncTab();
-    assignMap.PushMask(this);
-    for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_TrueExpr.get(), id, false, true, dfsSet);
-    }
-    dfsSet.clear();
-    for (auto expr : condExprs) {
-        assignMap.MaskSubtree(expr->m_FalseExpr.get(), id, false, false, dfsSet);
-    }
-    dfsSet.clear();
-    for (auto expr : condExprs) {
-        expr->m_TrueExpr->Emit(assignMap, os);
-    }
-    for (auto expr : condExprs) {
-        assignMap.PrintTab(os) << expr->GetEmitName(assignMap) << " = " <<
-            expr->m_TrueExpr->GetEmitName(assignMap) << ";" << std::endl;
-    }
-    assignMap.DecTab();
-    assignMap.PrintTab(os) << "} else {" << "//" << m_Cond->GetEmitName(assignMap) << std::endl;
-    assignMap.IncTab();
-    for (auto expr : condExprs) {
-        expr->m_FalseExpr->Emit(assignMap, os);
-    }
-    assignMap.PopMask();
-    for (auto expr : condExprs) {
-        assignMap.PrintTab(os) << expr->GetEmitName(assignMap) << " = " <<
-            expr->m_FalseExpr->GetEmitName(assignMap) << ";" << std::endl;
-    }
-    assignMap.DecTab();
-    assignMap.PrintTab(os) << "}" << "//" << m_Cond->GetEmitName(assignMap) << std::endl;
-    for (auto expr : condExprs) {
-        assignMap.SetEmitted(expr);
-    }
-}
-
-void CondExpr::EmitSelf(AssignmentMap &assignMap, std::ostream &os) const {
-}
-
-std::string CondExpr::GetEmitName(const AssignmentMap &assignMap) const {
-    return std::string("_t[") + std::to_string(assignMap.GetIndex(this)) + std::string("]");
 }
 
 void CondExpr::Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const {
@@ -1192,49 +770,6 @@ void EmitFunction(const std::vector<std::shared_ptr<Argument>> &inputs,
     Optimize(block);
     Emit(block, os);
     os << "}" << std::endl;
-#if 0
-    AssignmentMap assignMap;
-    for (auto expr : outputs) {
-        expr->Register(assignMap);
-        if (DetectCycle(expr)) {
-            throw std::runtime_error("Cycle detected");
-        }
-    }
-
-    std::unordered_map<std::string, int> varMap;
-    for (auto &var : outputs) {
-        varMap[var->GetName()] = std::max(varMap[var->GetName()], var->GetIndex() + 1);
-    }
-
-    os << "void " << name << "(";
-    std::unordered_set<std::string> varSet;
-    bool first = true;
-    for (auto &arg : inputs) {
-        if (!first) {
-            os << ", ";
-        }
-        first = false;
-        os << "const " << arg->GetDeclaration();
-    }
-    for (auto &var : outputs) {
-        if (varSet.find(var->GetName()) == varSet.end()) {
-            if (!first) {
-                os << ", ";
-            }
-            first = false;
-            os << "double " << var->GetName() << "[" << varMap[var->GetName()] << "]";
-            varSet.insert(var->GetName());
-        }
-    }
-    os << ") {" << std::endl;
-    os << "\tdouble _t[" << assignMap.GetAssignCount() << "];" << std::endl;
-    
-    for (auto expr : outputs) {
-        expr->Emit(assignMap, os);
-    }
-    
-    os << "}" << std::endl;
-#endif
 }
 
 bool DetectCycle(const std::shared_ptr<Expression> expr, 

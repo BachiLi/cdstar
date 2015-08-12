@@ -44,65 +44,6 @@ enum ExpressionType {
 
 std::ostream& PrintTab(const int tabNum, std::ostream &os);
 
-class AssignmentMap {
-public:
-    AssignmentMap() : m_AssignCount(0), m_BooleanCount(0), m_TabNum(1) {}
-    void Register(const Expression *expr);
-    bool IsRegistered(const Expression *expr) const {
-        return m_ExprMap.find(expr) != m_ExprMap.end();
-    }
-    void RegisterBoolean(const Expression *expr);
-    int GetIndex(const Expression *expr) const;
-    int GetAssignCount() const {
-        return m_AssignCount;
-    }
-    bool IsEmitted(const Expression *expr) const;
-    void SetEmitted(const Expression *expr);
-    void PushMask(const CondExpr *expr) {
-        m_ExprMasks.push(std::unordered_map<const Expression*, bool>());
-        m_LeftCondSubtrees.push(std::unordered_set<const Expression*>());
-        m_CondExprStack.push_back(expr);
-    }
-    void MaskSubtree(const Expression *expr, int rootId, bool inSubtree, bool isLeft, 
-                     std::unordered_set<const Expression*> &dfsSet);
-    bool IsMasked(const Expression *expr) const {
-        if (m_ExprMasks.size() == 0) return false;
-        return m_ExprMasks.top().find(expr) != m_ExprMasks.top().end();
-    }
-    bool IsMaskedAndTraversed(const Expression *expr) const;
-    void SetMaskTraversed(const Expression *expr);
-    void PopMask() {
-        m_CondExprStack.pop_back();
-        m_LeftCondSubtrees.pop();
-        m_ExprMasks.pop();
-    }
-    void IncTab() {m_TabNum++;}
-    void DecTab() {m_TabNum--;}
-    std::ostream& PrintTab(std::ostream &os) const {
-        for (int i = 0; i < m_TabNum; i++)
-            os << "\t";
-        return os;
-    }
-    std::vector<const CondExpr*> MergeableCondExpr(const CondExpr *condExpr) const;
-    
-    void BuildScope(const std::vector<const Expression*> &outputs);
-private:
-    bool CondPath(const CondExpr *src, const CondExpr *tgt) const {
-        return m_CondPath.find({src, tgt}) != m_CondPath.end();
-    }
-    std::unordered_map<const Expression*, int> m_ExprMap;
-    std::unordered_map<const Expression*, int> m_MaxParentId;
-    std::unordered_set<const Expression*> m_EmittedSet;
-    std::unordered_multimap<const Boolean*, const CondExpr*> m_CondMap;
-    std::set<std::pair<const CondExpr*, const CondExpr*>> m_CondPath;
-    std::stack<std::unordered_map<const Expression*, bool>> m_ExprMasks;
-    std::stack<std::unordered_set<const Expression*>> m_LeftCondSubtrees;
-    std::vector<const CondExpr*> m_CondExprStack;
-    int m_AssignCount;
-    int m_BooleanCount;
-    int m_TabNum;
-};
-
 template <typename T>
 inline void hash_combine(std::size_t &seed, const T &v) {
     std::hash<T> hasher;
@@ -113,10 +54,7 @@ class Expression {
 public:
     virtual ExpressionType Type() const = 0;
     virtual void Print() const = 0;
-    virtual void Register(AssignmentMap &assignMap) const;
     virtual bool UseTmpVar() const {return true;}
-    virtual void Emit(AssignmentMap &assignMap, std::ostream &os) const;
-    virtual std::string GetEmitName(const AssignmentMap &assignMap) const = 0;
     virtual void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const = 0;
     virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const = 0;
     virtual std::vector<std::shared_ptr<Expression>> Children() const = 0;
@@ -126,7 +64,6 @@ public:
     virtual bool Equal(const std::shared_ptr<Expression> expr) const = 0;
     size_t GetHash() const {return m_Hash;}
 protected:
-    virtual void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const = 0;
     size_t m_Hash;
 };
 
@@ -139,7 +76,6 @@ public:
     bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_VARIABLE;}
     void Print() const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::string GetName() const {return m_Name;}
@@ -157,8 +93,6 @@ public:
         hash_combine(hash, std::hash<std::string>()(m_Name));
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 private:
     std::string m_Name;
     int m_Index;
@@ -172,7 +106,6 @@ public:
     bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_CONSTANT;}
     void Print() const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -191,8 +124,6 @@ public:
         std::size_t hash = std::hash<double>()(m_Value);
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
 private:
     double m_Value;
 };
@@ -205,7 +136,6 @@ public:
     bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_INTEGER_CONSTANT;}
     void Print() const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -220,8 +150,6 @@ public:
         std::size_t hash = std::hash<int>()(m_Value);
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
 private:
     int m_Value;
 };
@@ -236,7 +164,6 @@ public:
     bool UseTmpVar() const {return false;}
     ExpressionType Type() const {return ET_NAMED_ASSIGNMENT;}
     void Print() const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::string GetName() const {return m_Name;}
@@ -255,8 +182,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
 private:    
     std::string m_Name;
     int m_Index;
@@ -267,7 +192,6 @@ class UnaryAssignment : public Expression {
 public:
     UnaryAssignment(const std::shared_ptr<Expression> &expr) :
         m_Expr(expr) {}
-    virtual std::string GetEmitName(const AssignmentMap &assignMap) const;
     virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
     virtual bool Equal(const std::shared_ptr<Expression> expr) const {
@@ -295,8 +219,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Inverse : public UnaryAssignment, public std::enable_shared_from_this<Inverse> {
@@ -314,8 +236,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;    
 };
 
 class Sin : public UnaryAssignment {
@@ -333,8 +253,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Cos : public UnaryAssignment {
@@ -352,8 +270,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Tan : public UnaryAssignment {
@@ -371,8 +287,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Sqrt : public UnaryAssignment, public std::enable_shared_from_this<Sqrt> {
@@ -390,8 +304,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class ASin : public UnaryAssignment {
@@ -409,8 +321,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class ACos : public UnaryAssignment {
@@ -428,8 +338,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Log : public UnaryAssignment {
@@ -447,8 +355,6 @@ public:
         hash_combine(hash, m_Expr->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class BinaryAssignment : public Expression {
@@ -457,7 +363,6 @@ public:
                      const std::shared_ptr<Expression> expr1) : 
         m_Expr0(expr0), m_Expr1(expr1) {
     }
-    virtual std::string GetEmitName(const AssignmentMap &assignMap) const;
     virtual std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;  
     int HasPartialConstant() const {
@@ -496,8 +401,6 @@ public:
         hash_combine(hash, m_Expr1->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Multiply : public BinaryAssignment {
@@ -523,8 +426,6 @@ public:
         hash_combine(hash, m_Expr1->GetHash());
         return hash;
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 };
 
 class Boolean : public Expression {
@@ -545,7 +446,6 @@ public:
     }    
     ExpressionType Type() const {return ET_BOOLEAN;}
     void Print() const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -566,8 +466,6 @@ public:
     std::shared_ptr<Boolean> Swap() const {
         return std::make_shared<Boolean>(ReverseOp(), m_Expr1, m_Expr0);
     }
-protected:    
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 private:
     std::string OpToString() const;
     Op ReverseOp() const;
@@ -585,8 +483,6 @@ public:
     }
     ExpressionType Type() const {return ET_CONDEXPR;}
     void Print() const;
-    void Emit(AssignmentMap &assignMap, std::ostream &os) const;
-    std::string GetEmitName(const AssignmentMap &assignMap) const;
     void Emit(const CFGBlock *block, const std::unordered_map<const Expression*, ExprInfo> &exprMap, std::ostream &os) const;
     std::string GetEmitName(const std::unordered_map<const Expression*, ExprInfo> &exprMap) const;
     std::vector<std::shared_ptr<Expression>> Children() const;
@@ -612,8 +508,6 @@ public:
     std::shared_ptr<CondExpr> Swap() const {
         return std::make_shared<CondExpr>(m_Cond->Swap(), m_FalseExpr, m_TrueExpr);
     }
-protected:
-    void EmitSelf(AssignmentMap &assignMap, std::ostream &os) const;
 private:
     std::shared_ptr<Boolean> m_Cond;
     std::shared_ptr<Expression> m_TrueExpr, m_FalseExpr;
