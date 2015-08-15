@@ -29,12 +29,9 @@ void BuildCFGBlockRecursive(const Expression *expr,
         trueBlock->exprs = {expr};
         trueBlock->condId = 0;
         trueBlock->nextBlocks = {newBlock};
-        trueBlock->prevBlocks = {block};
         falseBlock->exprs = {expr};
         falseBlock->condId = 1;
         falseBlock->nextBlocks = {newBlock};
-        falseBlock->prevBlocks = {block};
-        newBlock->prevBlocks = {trueBlock, falseBlock};
         block = newBlock;
     }
 }
@@ -91,6 +88,9 @@ void BuildNextIdList(const std::shared_ptr<CFGBlock> block,
         BuildNextIdList(block->nextBlocks[0], blockMap, nextId, stackId);
     }
     if (block->nextBlocks.size() == 2) {
+        if (block->cond == nullptr) {
+            throw std::runtime_error("Error encountered when optimizing CFGs");
+        }
         stackId.push(blockMap.at(block.get()));
         BuildNextIdList(block->nextBlocks[0], blockMap, nextId, stackId);
         BuildNextIdList(block->nextBlocks[1], blockMap, nextId, stackId);
@@ -157,27 +157,60 @@ void BuildCFGBlockList(const std::shared_ptr<CFGBlock> block,
 
 void PushExpr(const Expression *expr,
               const std::unordered_map<const Expression*, std::shared_ptr<CFGBlock>> &exprMap,
+              const std::vector<std::shared_ptr<CFGBlock>> &blockList,
               const std::unordered_map<CFGBlock*, int> &blockMap,
-              std::shared_ptr<CFGBlock> toPush,
+              const std::vector<int> &nextId,
+              std::shared_ptr<CFGBlock> &toPush,
               std::unordered_set<const Expression*> &dfsSet,
               std::unordered_set<const Expression*> &insertedSet,
               int toMergeBlockId,
-              int mergeBlockId) {
+              int mergeBlockId,
+              std::vector<std::shared_ptr<CFGBlock>> &blockToAdd,
+              std::vector<std::shared_ptr<CFGBlock>> &blockToRemove) {
     if (dfsSet.find(expr) != dfsSet.end() ||
         insertedSet.find(expr) != insertedSet.end()) {
         return;
     }
 
     dfsSet.insert(expr);
-    
+
     for (auto child : expr->Children()) {
-        PushExpr(child.get(), exprMap, blockMap, toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId);
+        PushExpr(child.get(), exprMap, blockList, blockMap, nextId, 
+            toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId, blockToAdd, blockToRemove);
     }
 
-    if (expr->Type() != ET_CONDEXPR && expr->UseTmpVar()) {
+    if (expr->Type() == ET_CONDEXPR) {
         std::shared_ptr<CFGBlock> exprBlock = exprMap.at(expr);
         int exprBlockId = blockMap.at(exprBlock.get());
-        if (exprBlockId > toMergeBlockId && exprBlockId <= mergeBlockId) {
+        if (exprBlockId <= toMergeBlockId || exprBlockId > mergeBlockId) {
+            return;
+        }
+        insertedSet.insert(expr);
+        auto toPushNext = toPush->nextBlocks;
+        auto toPushCond = toPush->cond;
+        auto toPushCondExprs = toPush->condExprs;
+        toPush->nextBlocks = exprBlock->nextBlocks;
+        toPush->cond = exprBlock->cond;
+        toPush->condExprs = exprBlock->condExprs;
+        std::shared_ptr<CFGBlock> newBlock = std::make_shared<CFGBlock>();
+        newBlock->nextBlocks = toPushNext;
+        newBlock->condId = toPush->condId;
+        newBlock->cond = toPushCond;
+        newBlock->condExprs = toPushCondExprs;
+        toPush = newBlock;
+        blockToAdd.push_back(newBlock);
+        blockToRemove.push_back(exprBlock);
+    } else if (expr->UseTmpVar()) {
+        std::shared_ptr<CFGBlock> exprBlock = exprMap.at(expr);
+        int exprBlockId = blockMap.at(exprBlock.get());
+        bool sameLevel = false;
+        for (int i = nextId[toMergeBlockId]; i != -1; i = nextId[i]) {
+            if (exprBlockId == i) {
+                sameLevel = true;
+                break;
+            }
+        }
+        if (sameLevel) {
             insertedSet.insert(expr);
             toPush->exprs.push_back(expr);
             exprBlock->exprs.remove(expr);
@@ -194,55 +227,115 @@ void Merge(std::shared_ptr<CFGBlock> toMerge,
     int toMergeBlockId = blockMap.at(toMerge.get());
     int mergeBlockId = blockMap.at(merge.get());
     std::unordered_set<const Expression*> insertedSet;
-    // move all the expressions depended by the expressions in the true/false clauses, 
+    std::vector<std::shared_ptr<CFGBlock>> blockToAdd, blockToRemove;
+    std::shared_ptr<CFGBlock> toPush = toMerge;
+    // move all the expressions depended by the expressions in the true/false clauses (and the condition), 
     // in the the toMerge block
+    if (merge->cond != nullptr) {
+        std::unordered_set<const Expression*> dfsSet;
+        PushExpr(merge->cond, exprMap, blockList, blockMap, nextId, 
+            toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId, blockToAdd, blockToRemove);
+    }
     for (int i = mergeBlockId + 1; i < nextId[mergeBlockId]; i++) {
         std::shared_ptr<CFGBlock> curBlock = blockList[i];
         for (auto expr : curBlock->exprs) {
             std::unordered_set<const Expression*> dfsSet;
             if (expr->Type() != ET_CONDEXPR) {
                 for (auto child : expr->Children()) {
-                    PushExpr(child.get(), exprMap, blockMap, toMerge, dfsSet, insertedSet, toMergeBlockId, mergeBlockId);
+                    PushExpr(child.get(), exprMap,  blockList, blockMap, nextId, 
+                        toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId, blockToAdd, blockToRemove);
                 }
             } else {
                 PushExpr(expr->Children()[curBlock->condId+1].get(), 
-                    exprMap, blockMap, toMerge, dfsSet, insertedSet, toMergeBlockId, mergeBlockId);
+                    exprMap, blockList, blockMap, nextId, toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId, blockToAdd, blockToRemove);
             }
+        }
+        if (curBlock->cond != nullptr) {
+            std::unordered_set<const Expression*> dfsSet;
+            PushExpr(curBlock->cond, exprMap,  blockList, blockMap, nextId, 
+                toPush, dfsSet, insertedSet, toMergeBlockId, mergeBlockId, blockToAdd, blockToRemove);
+        }
+    }
+    std::shared_ptr<CFGBlock> toMergeLastBlock = blockList[nextId[toMergeBlockId]];
+    std::shared_ptr<CFGBlock> mergeLastBlock = blockList[nextId[mergeBlockId]];
+    std::unordered_set<std::shared_ptr<CFGBlock>> removed;
+    for (int i = 0; i < (int)blockToAdd.size(); i++) {
+        auto toAdd = blockToAdd[i];
+        auto toRemove = blockToRemove[i];
+        int toRemoveId = blockMap.at(toRemove.get());
+        int toRemoveNextId = nextId[toRemoveId];
+        auto toRemoveNext = blockList[toRemoveNextId];
+        while(removed.find(toRemoveNext) != removed.end()) {
+            toRemoveNextId = nextId[toRemoveNextId];
+            toRemoveNext = blockList[toRemoveNextId];
+        }
+        for (auto it = toRemove->exprs.rbegin(); it != toRemove->exprs.rend(); it++) {
+            toRemoveNext->exprs.push_front(*it);
+        }
+        int count = 0;
+        for (int i = toRemoveId + 1; i < toRemoveNextId; i++) {
+            if (blockList[i]->nextBlocks[0] == toRemoveNext) {
+                blockList[i]->nextBlocks[0] = toAdd;
+                count++;
+            }            
+        }
+        count = 0;
+        for (int i = toMergeBlockId + 1; i < toRemoveId; i++) {
+            if (blockList[i]->nextBlocks[0] == toRemove) {
+                blockList[i]->nextBlocks[0] = toRemoveNext;
+                count++;
+            }
+        }
+        removed.insert(toRemove);
+        if (toRemove == toMergeLastBlock) {
+            toMergeLastBlock = toRemoveNext;
         }
     }
 
-    std::shared_ptr<CFGBlock> toMergeLastBlock = blockList[nextId[toMergeBlockId]];
-    std::shared_ptr<CFGBlock> mergeLastBlock = blockList[nextId[mergeBlockId]];
-    std::shared_ptr<CFGBlock> toMergeTrueBlock = toMergeLastBlock->prevBlocks[0].lock();
+    if (blockToAdd.size() > 0) {
+        // need to recompute nextId array
+        return;
+    }
+
+    std::shared_ptr<CFGBlock> toMergeTrueBlock;
+    for (int i = toMergeBlockId + 1; i < nextId[toMergeBlockId]; i++) {
+        if (blockList[i]->nextBlocks[0] == toMergeLastBlock) {
+            toMergeTrueBlock = blockList[i];
+            break;
+        }
+    }
     for (auto expr : merge->nextBlocks[0]->exprs) {
         toMergeTrueBlock->exprs.push_back(expr);
     }
     if (merge->nextBlocks[0]->nextBlocks.size() > 1) {
         toMergeTrueBlock->nextBlocks = merge->nextBlocks[0]->nextBlocks;
         toMergeTrueBlock->condExprs = merge->nextBlocks[0]->condExprs;
-        std::shared_ptr<CFGBlock> mergeTrueBlock = mergeLastBlock->prevBlocks[0].lock();
-        mergeTrueBlock->nextBlocks = {std::shared_ptr<CFGBlock>(toMergeLastBlock)};
-        toMergeLastBlock->prevBlocks[0] = mergeLastBlock->prevBlocks[0];
+        toMergeTrueBlock->cond = merge->nextBlocks[0]->cond;
+        std::shared_ptr<CFGBlock> mergeTrueBlock;
+        for (int i = mergeBlockId + 1; i < nextId[mergeBlockId]; i++) {
+            if (blockList[i]->nextBlocks[0] == mergeLastBlock) {
+                mergeTrueBlock = blockList[i];
+                break;
+            }            
+        }
+        mergeTrueBlock->nextBlocks = {toMergeLastBlock};
     }
-    std::shared_ptr<CFGBlock> toMergeFalseBlock = toMergeLastBlock->prevBlocks[1].lock();
+    std::shared_ptr<CFGBlock> toMergeFalseBlock = blockList[nextId[toMergeBlockId]-1];
     for (auto expr : merge->nextBlocks[1]->exprs) {
         toMergeFalseBlock->exprs.push_back(expr);
     }
     if (merge->nextBlocks[1]->nextBlocks.size() > 1) {
         toMergeFalseBlock->nextBlocks = merge->nextBlocks[1]->nextBlocks;
         toMergeFalseBlock->condExprs = merge->nextBlocks[1]->condExprs;
-        std::shared_ptr<CFGBlock> mergeFalseBlock = mergeLastBlock->prevBlocks[1].lock();
-        mergeFalseBlock->nextBlocks = {std::shared_ptr<CFGBlock>(toMergeLastBlock)};
-        toMergeLastBlock->prevBlocks[1] = mergeLastBlock->prevBlocks[1];
+        toMergeFalseBlock->cond = merge->nextBlocks[1]->cond;
+        std::shared_ptr<CFGBlock> mergeFalseBlock = blockList[nextId[mergeBlockId]-1];
+        mergeFalseBlock->nextBlocks = {toMergeLastBlock};
     }
     toMerge->condExprs.insert(toMerge->condExprs.end(), merge->condExprs.begin(), merge->condExprs.end());
     for (auto expr : mergeLastBlock->exprs) {
         merge->exprs.push_back(expr);
     }
     merge->nextBlocks = mergeLastBlock->nextBlocks;
-    if (mergeLastBlock->nextBlocks.size() > 0) {
-        mergeLastBlock->prevBlocks = {std::shared_ptr<CFGBlock>(merge)};
-    }
     merge->cond = mergeLastBlock->cond;
     merge->condExprs = mergeLastBlock->condExprs;
 }
@@ -333,6 +426,10 @@ void BuildCondBlockDep(const std::vector<std::shared_ptr<CFGBlock>> &blockList,
                 visited.insert(child.get());
             }
         }
+        if (block->cond != nullptr) {
+            condBlockDep.insert({block->cond, block});
+            exprSet.insert(block->cond);
+        }
     }
 
     for (auto expr : exprSet) {
@@ -412,32 +509,38 @@ bool PullExpr(const std::vector<std::shared_ptr<CFGBlock>> &blockList,
                     auto exprBlockNext = blockList[exprBlockNextId];
                     std::shared_ptr<CFGBlock> newBlock = std::make_shared<CFGBlock>();
                     newBlock->nextBlocks = exprBlock->nextBlocks;
-                    newBlock->prevBlocks = moveInBlock->prevBlocks;
                     newBlock->condId = moveInBlock->condId;
                     newBlock->cond = exprBlock->cond;
                     newBlock->condExprs = exprBlock->condExprs;
-                    newBlock->nextBlocks[0]->prevBlocks = {newBlock};
-                    newBlock->nextBlocks[1]->prevBlocks = {newBlock};
                     
-                    if (moveInBlock->prevBlocks.size() == 1) {
-                        moveInBlock->prevBlocks[0].lock()->nextBlocks[moveInBlock->condId] = newBlock;
-                    } else if (moveInBlock->prevBlocks.size() == 2) {
-                        moveInBlock->prevBlocks[0].lock()->nextBlocks = {newBlock};
-                        moveInBlock->prevBlocks[1].lock()->nextBlocks = {newBlock};
+                    auto nodeAncestorParent = nodeAncestor->parent.lock();
+                    if (nodeAncestorParent != nullptr) {
+                        for (auto prevBlock : nodeAncestorParent->blocks) {
+                            bool found = false;
+                            for (int i = 0; i < (int)prevBlock->nextBlocks.size(); i++) {
+                                if (prevBlock->nextBlocks[i] == moveInBlock) {
+                                    found = true;
+                                    prevBlock->nextBlocks[i] = newBlock;
+                                    break;
+                                }
+                            }
+                            if (found) {
+                                break;
+                            }
+                        }
                     }
-                    moveInBlock->prevBlocks = exprBlockNext->prevBlocks;
 
                     exprBlock->exprs.insert(exprBlock->exprs.end(), exprBlockNext->exprs.begin(), exprBlockNext->exprs.end());
                     exprBlock->nextBlocks = exprBlockNext->nextBlocks;
                     exprBlock->cond = exprBlockNext->cond;
                     exprBlock->condExprs = exprBlockNext->condExprs;
-                    for (auto nextBlock : exprBlockNext->nextBlocks) {
-                        nextBlock->prevBlocks = {exprBlock};
-                    }
-                    
+
                     exprBlockNext->exprs.clear();
-                    exprBlockNext->prevBlocks[0].lock()->nextBlocks[0] = moveInBlock;
-                    exprBlockNext->prevBlocks[1].lock()->nextBlocks[0] = moveInBlock;
+                    for (int i = blockMap.find(exprBlock.get())->second; i < exprBlockNextId; i++) {
+                        if (blockList[i]->nextBlocks[0] == exprBlockNext) {
+                            blockList[i]->nextBlocks[0] = moveInBlock;
+                        }
+                    }
                     return true;
                 } else {
                     if (blockNodeMap.find(exprBlock.get())->second == condNode) {
@@ -504,6 +607,7 @@ bool OptimizeNestedCond(const std::vector<std::shared_ptr<CFGBlock>> &blockList)
 
 void Optimize(std::shared_ptr<CFGBlock> block) {
     bool changed = false;
+    int count = 0;
     do {
         changed = false;
         std::vector<std::shared_ptr<CFGBlock>> blockList;
@@ -530,6 +634,7 @@ void Optimize(std::shared_ptr<CFGBlock> block) {
                 }
             }
         }
+        count++;
     } while(changed);
 }
 

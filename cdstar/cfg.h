@@ -22,7 +22,6 @@ struct CFGBlock {
     bool isFirst;
     std::list<const Expression*> exprs;
     std::vector<std::shared_ptr<CFGBlock>> nextBlocks;
-    std::vector<std::weak_ptr<CFGBlock>> prevBlocks;
     int condId;
     const Boolean *cond;
     std::vector<const CondExpr*> condExprs;
