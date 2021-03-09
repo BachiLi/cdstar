@@ -27,7 +27,7 @@ void derv(const double x, double dydx[1]) {
 ```
 It is possible to generate higher-order derivatives or mixed derivatives by mixing the calls of the Derivatives function.  See test.cpp for more examples.
 
-CD\* implements the [D\* algorithm](http://dl.acm.org/citation.cfm?id=1276512) to efficiently compute the derivatives of a function.  The algorithm is efficient for small-to-medium dimensional (say, <100) functions because it performs costly path-finding algorithm on the expression graph.  If you need to generate the code of the Jacobian or Hessian of a function with 10000  variables, you should also take a look at the following libraries: [CasADi](https://github.com/casadi/casadi/wiki), [theano](http://deeplearning.net/software/theano/), [CppADCode](https://github.com/joaoleal/CppADCodeGen/)
+CD\* implements the [D\* algorithm](http://dl.acm.org/citation.cfm?id=1276512) to efficiently compute the derivatives of a function.  The algorithm is efficient for small-to-medium dimensional (say, <100) functions because it performs costly path-finding algorithm on the expression graph.  If you need to generate the code of the Jacobian or Hessian of a function with 10000  variables, you should also take a look at the following libraries: [CasADi](http://casadi.org), [theano](http://deeplearning.net/software/theano/), [CppADCode](https://github.com/joaoleal/CppADCodeGen/)
 
 This project is still in its very early stage, the interface may change significantly in future development.
 
